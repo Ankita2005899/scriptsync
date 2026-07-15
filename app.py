@@ -9,8 +9,10 @@ import moviepy.editor as mp
 
 app = Flask(__name__)
 
-# Keep uploads small on free-tier Render (raise this if you upgrade your plan)
-app.config["MAX_CONTENT_LENGTH"] = 60 * 1024 * 1024  # 60MB
+# Raised from 60MB — no longer capping uploads tightly.
+# Note: this does NOT change Render free tier's 512MB RAM ceiling.
+# A very large video can still crash/hang the worker during transcription.
+app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500MB
 
 MODEL_SIZE = os.environ.get("WHISPER_MODEL", "tiny")  # tiny/base = free-tier safe
 _model = None
@@ -62,9 +64,6 @@ def api_process():
 
         audio_path = os.path.join(tmp_dir, "audio.wav")
         clip = mp.VideoFileClip(video_path)
-        if clip.duration and clip.duration > 600:
-            clip.close()
-            return jsonify({"error": "Video too long for this tier (max 10 min). Upgrade the Render plan for longer clips."}), 400
         clip.audio.write_audiofile(audio_path, logger=None)
         clip.close()
 
