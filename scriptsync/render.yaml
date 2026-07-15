@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: scriptsync
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --timeout 300 --workers 1
+    envVars:
+      - key: WHISPER_MODEL
+        value: tiny
+      - key: PYTHON_VERSION
+        value: 3.11.9
