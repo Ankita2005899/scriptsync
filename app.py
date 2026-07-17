@@ -4,12 +4,33 @@ import tempfile
 import threading
 import uuid
 import time
+import io
+import re
 
 import requests
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 from faster_whisper import WhisperModel
 from deep_translator import GoogleTranslator
 import moviepy.editor as mp
+
+from docx import Document
+from docx.shared import Pt, RGBColor, Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT
+
+from pptx import Presentation
+from pptx.util import Inches as PptxInches, Pt as PptxPt
+from pptx.dml.color import RGBColor as PptxRGBColor
+
+try:
+    from duckduckgo_search import DDGS
+except Exception:
+    DDGS = None  # image search becomes a no-op if the package fails to load
 
 app = Flask(__name__)
 
@@ -72,6 +93,91 @@ LANGUAGES = {
 # jobs are lost on redeploy/restart, which is acceptable here.
 JOBS = {}
 JOBS_LOCK = threading.Lock()
+
+# Simple cache so we don't re-search the same query twice within one export
+_IMAGE_CACHE = {}
+_IMAGE_CACHE_LOCK = threading.Lock()
+
+_STOPWORDS = {
+    "the", "a", "an", "and", "or", "but", "is", "are", "was", "were", "be",
+    "been", "to", "of", "in", "on", "at", "for", "with", "this", "that",
+    "it", "as", "by", "from", "so", "we", "you", "i", "he", "she", "they",
+    "them", "his", "her", "its", "our", "your", "not", "do", "does", "did",
+    "have", "has", "had", "will", "would", "can", "could", "should", "then",
+}
+
+
+def search_image_url(query, timeout=6):
+    """
+    Looks up one relevant image URL for a short piece of text, using
+    DuckDuckGo's free (unofficial, no API key) image search. Returns None
+    on any failure -- callers should treat a missing image as fine, not
+    fatal, since this library can occasionally be rate-limited or break.
+    """
+    query = (query or "").strip()
+    if not query or DDGS is None:
+        return None
+
+    with _IMAGE_CACHE_LOCK:
+        if query in _IMAGE_CACHE:
+            return _IMAGE_CACHE[query]
+
+    url = None
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.images(query, max_results=1, safesearch="moderate"))
+            if results:
+                url = results[0].get("image")
+    except Exception:
+        url = None
+
+    with _IMAGE_CACHE_LOCK:
+        _IMAGE_CACHE[query] = url
+    return url
+
+
+def download_image_bytes(url, timeout=8, max_bytes=8 * 1024 * 1024):
+    """Downloads an image for embedding into a document. Returns None on failure."""
+    if not url:
+        return None
+    try:
+        resp = requests.get(url, timeout=timeout, stream=True)
+        if resp.status_code != 200:
+            return None
+        content = resp.content
+        if not content or len(content) > max_bytes:
+            return None
+        return content
+    except Exception:
+        return None
+
+
+def pick_search_query(text, max_words=6):
+    """Picks a short, reasonable web-image search query out of a segment's text."""
+    words = re.findall(r"[A-Za-z0-9']+", text)
+    return " ".join(words[:max_words]) if words else ""
+
+
+def pick_important_word(text):
+    """
+    Heuristic 'main word' picker for bolding in the PDF export: the
+    longest non-stopword in the sentence, on the assumption that longer
+    content words tend to carry more meaning than short function words.
+    This is a simple heuristic, not real NLP keyword extraction.
+    """
+    words = re.findall(r"[A-Za-z']+", text)
+    candidates = [w for w in words if w.lower() not in _STOPWORDS and len(w) > 3]
+    if not candidates:
+        return None
+    return max(candidates, key=len)
+
+
+def get_job_result_or_404(job_id):
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+    if not job or job.get("status") != "done" or not job.get("result"):
+        return None
+    return job["result"]
 
 # Drop jobs older than this so memory doesn't grow forever (seconds)
 JOB_TTL_SECONDS = 60 * 60  # 1 hour
@@ -234,6 +340,192 @@ def run_job(job_id, video_path, target_lang, tmp_dir):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+def build_docx(result):
+    """Clean, professional Word document: heading per segment, translated
+    text as the main body, original as a smaller gray reference line."""
+    doc = Document()
+    title = doc.add_heading("ScriptSync Transcript", level=0)
+
+    meta = doc.add_paragraph()
+    meta.add_run(
+        f"Detected language: {result.get('detected_language', 'unknown').upper()}  ->  "
+        f"Translated to: {result.get('target_language', '').upper()}"
+    ).italic = True
+
+    for seg in result.get("segments", []):
+        heading = doc.add_heading(f"{seg['start']:.0f}s – {seg['end']:.0f}s", level=2)
+
+        translated_p = doc.add_paragraph()
+        run = translated_p.add_run(seg.get("translated", ""))
+        run.font.size = Pt(13)
+
+        original_p = doc.add_paragraph()
+        orig_run = original_p.add_run(f"Original: {seg.get('original', '')}")
+        orig_run.font.size = Pt(9)
+        orig_run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
+        orig_run.italic = True
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def build_pdf(result):
+    """PDF export with the main (heuristically important) word of each
+    segment bolded, as requested."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, topMargin=0.75 * inch, bottomMargin=0.75 * inch)
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle("TitleStyle", parent=styles["Title"], alignment=TA_LEFT)
+    body_style = ParagraphStyle("BodyStyle", parent=styles["Normal"], fontSize=12, leading=17, spaceAfter=4)
+    meta_style = ParagraphStyle("MetaStyle", parent=styles["Normal"], fontSize=9, textColor="#666666", spaceAfter=14)
+    time_style = ParagraphStyle("TimeStyle", parent=styles["Normal"], fontSize=9, textColor="#B3061B", spaceBefore=10)
+
+    story = [Paragraph("ScriptSync Transcript", title_style), Spacer(1, 6)]
+    story.append(Paragraph(
+        f"Detected: {result.get('detected_language', 'unknown').upper()} &rarr; "
+        f"Translated to: {result.get('target_language', '').upper()}",
+        meta_style,
+    ))
+
+    for seg in result.get("segments", []):
+        story.append(Paragraph(f"{seg['start']:.0f}s – {seg['end']:.0f}s", time_style))
+
+        translated = seg.get("translated", "")
+        important = pick_important_word(translated)
+        display_text = translated
+        if important:
+            # Bold only the first occurrence of the chosen important word.
+            display_text = re.sub(
+                rf"\b({re.escape(important)})\b",
+                r"<b>\1</b>",
+                translated,
+                count=1,
+            )
+        story.append(Paragraph(display_text, body_style))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf
+
+
+def build_pptx(result, with_images=True):
+    """One slide per segment: timestamp title, original + translated text,
+    and (if enabled) one auto-searched image per slide."""
+    prs = Presentation()
+    blank_layout = prs.slide_layouts[6]
+
+    title_slide_layout = prs.slide_layouts[0]
+    title_slide = prs.slides.add_slide(title_slide_layout)
+    title_slide.shapes.title.text = "ScriptSync Transcript"
+    subtitle = title_slide.placeholders[1]
+    subtitle.text = (
+        f"{result.get('detected_language', 'unknown').upper()} -> "
+        f"{result.get('target_language', '').upper()}"
+    )
+
+    for seg in result.get("segments", []):
+        slide = prs.slides.add_slide(blank_layout)
+
+        # Text box (left side if there's an image, full width otherwise)
+        text_width = PptxInches(5.5) if with_images else PptxInches(9)
+        tb = slide.shapes.add_textbox(PptxInches(0.5), PptxInches(0.4), text_width, PptxInches(6.5))
+        tf = tb.text_frame
+        tf.word_wrap = True
+
+        time_p = tf.paragraphs[0]
+        time_run = time_p.add_run()
+        time_run.text = f"{seg['start']:.0f}s – {seg['end']:.0f}s"
+        time_run.font.size = PptxPt(14)
+        time_run.font.color.rgb = PptxRGBColor(0xD6, 0x27, 0x3C)
+        time_run.font.bold = True
+
+        trans_p = tf.add_paragraph()
+        trans_run = trans_p.add_run()
+        trans_run.text = seg.get("translated", "")
+        trans_run.font.size = PptxPt(20)
+        trans_run.font.bold = True
+
+        orig_p = tf.add_paragraph()
+        orig_run = orig_p.add_run()
+        orig_run.text = seg.get("original", "")
+        orig_run.font.size = PptxPt(12)
+        orig_run.font.italic = True
+        orig_run.font.color.rgb = PptxRGBColor(0x80, 0x80, 0x80)
+
+        if with_images:
+            query = pick_search_query(seg.get("translated") or seg.get("original", ""))
+            img_url = search_image_url(query)
+            img_bytes = download_image_bytes(img_url)
+            if img_bytes:
+                try:
+                    slide.shapes.add_picture(
+                        io.BytesIO(img_bytes),
+                        PptxInches(6.3), PptxInches(1.2),
+                        width=PptxInches(3.0),
+                    )
+                except Exception:
+                    pass  # bad/corrupt image data -- just skip it for this slide
+
+    buf = io.BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def build_notes_docx(result):
+    """
+    'Notes' format: each segment's full translated text shown large, bold,
+    and highlighted (like study notes), with one auto-searched image per
+    segment placed alongside it.
+    """
+    doc = Document()
+    doc.add_heading("ScriptSync — Notes", level=0)
+
+    meta = doc.add_paragraph()
+    meta.add_run(
+        f"{result.get('detected_language', 'unknown').upper()} -> "
+        f"{result.get('target_language', '').upper()}"
+    ).italic = True
+
+    for seg in result.get("segments", []):
+        time_p = doc.add_paragraph()
+        time_run = time_p.add_run(f"{seg['start']:.0f}s – {seg['end']:.0f}s")
+        time_run.font.size = Pt(10)
+        time_run.font.color.rgb = RGBColor(0xD6, 0x27, 0x3C)
+        time_run.bold = True
+
+        note_p = doc.add_paragraph()
+        note_run = note_p.add_run(seg.get("translated", ""))
+        note_run.font.size = Pt(16)
+        note_run.bold = True
+        # python-docx has no direct "highlight" property via add_run in all
+        # versions uniformly, so we set it through the run's font element.
+        try:
+            from docx.enum.text import WD_COLOR_INDEX
+            note_run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+        except Exception:
+            pass
+
+        query = pick_search_query(seg.get("translated") or seg.get("original", ""))
+        img_url = search_image_url(query)
+        img_bytes = download_image_bytes(img_url)
+        if img_bytes:
+            try:
+                doc.add_picture(io.BytesIO(img_bytes), width=Inches(3.5))
+            except Exception:
+                pass
+
+        doc.add_paragraph()  # spacing between notes
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf
+
+
 @app.route("/")
 def index():
     return render_template("index.html", languages=LANGUAGES)
@@ -279,6 +571,41 @@ def api_process():
 
     # Return immediately so Render's proxy never has to hold this request open.
     return jsonify({"job_id": job_id}), 202
+
+
+@app.route("/api/export/<job_id>/<fmt>")
+def api_export(job_id, fmt):
+    result = get_job_result_or_404(job_id)
+    if result is None:
+        return jsonify({"error": "This job isn't finished yet, or has expired. Please generate the script again."}), 404
+
+    lang = result.get("target_language", "output")
+
+    try:
+        if fmt == "docx":
+            buf = build_docx(result)
+            return send_file(buf, as_attachment=True, download_name=f"scriptsync_{lang}.docx",
+                              mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+        if fmt == "pdf":
+            buf = build_pdf(result)
+            return send_file(buf, as_attachment=True, download_name=f"scriptsync_{lang}.pdf",
+                              mimetype="application/pdf")
+
+        if fmt == "pptx":
+            buf = build_pptx(result, with_images=True)
+            return send_file(buf, as_attachment=True, download_name=f"scriptsync_{lang}.pptx",
+                              mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+
+        if fmt == "notes":
+            buf = build_notes_docx(result)
+            return send_file(buf, as_attachment=True, download_name=f"scriptsync_notes_{lang}.docx",
+                              mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+        return jsonify({"error": f"Unknown format '{fmt}'."}), 400
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to generate {fmt}: {e}"}), 500
 
 
 @app.route("/api/status/<job_id>")

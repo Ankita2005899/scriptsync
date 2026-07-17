@@ -1,828 +1,1071 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ScriptSync — Every video, every language</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --ink: #FFFFFF;
-    --surface: #FFFFFF;
-    --surface-2: #FBEAEC;
-    --border: #F0C4C9;
-    --text: #1A0E10;
-    --text-muted: #8A6B6E;
-    --gold: #D6273C;
-    --teal: #D6273C;
-    --danger: #B3061B;
-    --red: #D6273C;
-    --red-dark: #A81C2E;
-  }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScriptSync — Every video, every language</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --ink: #FFFFFF;
+      --surface: #FFFFFF;
+      --surface-2: #FBEAEC;
+      --border: #F0C4C9;
+      --text: #1A0E10;
+      --text-muted: #8A6B6E;
+      --gold: #D6273C;
+      --teal: #D6273C;
+      --danger: #B3061B;
+      --red: #D6273C;
+      --red-dark: #A81C2E;
+    }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-  html { scroll-behavior: smooth; }
+    html {
+      scroll-behavior: smooth;
+    }
 
-  body {
-    background: var(--ink);
-    color: var(--text);
-    font-family: 'Inter', sans-serif;
-    line-height: 1.6;
-    min-height: 100vh;
-  }
+    body {
+      background: var(--ink);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
 
-  .mono { font-family: 'IBM Plex Mono', monospace; }
+    .mono {
+      font-family: 'IBM Plex Mono', monospace;
+    }
 
-  ::selection { background: var(--red); color: #FFFFFF; }
+    ::selection {
+      background: var(--red);
+      color: #FFFFFF;
+    }
 
-  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
-    outline: 2px solid var(--red);
-    outline-offset: 2px;
-  }
+    a:focus-visible,
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible {
+      outline: 2px solid var(--red);
+      outline-offset: 2px;
+    }
 
-  .wrap { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+    .wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
 
-  /* ---------- Page descriptor (top center, under header) ---------- */
-  .page-descriptor-wrap {
-    text-align: center;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, var(--surface-2), var(--surface));
-  }
-  .page-descriptor {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--red-dark);
-    background: #FFFFFF;
-    border: 1px solid var(--border);
-    padding: 8px 18px;
-    border-radius: 999px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.72rem;
-    letter-spacing: 0.02em;
-    font-weight: 500;
-    max-width: 640px;
-    box-shadow: 0 1px 2px rgba(214, 39, 60, 0.08);
-  }
-  .page-descriptor .dot-sep {
-    width: 5px; height: 5px;
-    border-radius: 50%;
-    background: var(--red);
-    flex-shrink: 0;
-  }
+    /* ---------- Page descriptor (top center, under header) ---------- */
+    .page-descriptor-wrap {
+      text-align: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, var(--surface-2), var(--surface));
+    }
 
-  /* ---------- Header ---------- */
-  header {
-    padding: 28px 0;
-    border-bottom: 1px solid var(--border);
-  }
-  header .wrap { display: flex; align-items: center; justify-content: space-between; }
-  .logo {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 700;
-    font-size: 1.15rem;
-    letter-spacing: -0.01em;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--text);
-  }
-  .logo .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
-  .tag {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    letter-spacing: 0.04em;
-  }
+    .page-descriptor {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--red-dark);
+      background: #FFFFFF;
+      border: 1px solid var(--border);
+      padding: 8px 18px;
+      border-radius: 999px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.02em;
+      font-weight: 500;
+      max-width: 640px;
+      box-shadow: 0 1px 2px rgba(214, 39, 60, 0.08);
+    }
 
-  /* ---------- Hero ---------- */
-  .hero { padding: 72px 0 56px; }
-  .eyebrow {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.75rem;
-    color: var(--red);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin-bottom: 18px;
-  }
-  h1 {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    font-size: clamp(2rem, 5vw, 3.1rem);
-    line-height: 1.08;
-    letter-spacing: -0.02em;
-    max-width: 15ch;
-    color: var(--text);
-  }
-  h1 em {
-    font-style: normal;
-    color: var(--red);
-  }
-  .sub {
-    margin-top: 20px;
-    color: var(--text-muted);
-    font-size: 1.05rem;
-    max-width: 46ch;
-  }
+    .page-descriptor .dot-sep {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--red);
+      flex-shrink: 0;
+    }
 
-  /* ---------- Filmstrip upload zone ---------- */
-  .filmstrip {
-    margin-top: 48px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    overflow: hidden;
-    position: relative;
-    box-shadow: 0 1px 3px rgba(214, 39, 60, 0.06);
-  }
-  .sprockets {
-    display: flex;
-    justify-content: space-evenly;
-    padding: 10px 16px;
-    background: var(--surface-2);
-  }
-  .sprockets span {
-    width: 8px; height: 8px;
-    border-radius: 2px;
-    background: var(--red);
-    opacity: 0.35;
-  }
-  .drop-zone {
-    padding: 44px 32px;
-    text-align: center;
-    cursor: pointer;
-    transition: background 0.2s ease;
-    border: none;
-    background: transparent;
-    width: 100%;
-  }
-  .drop-zone:hover, .drop-zone.dragover { background: rgba(214, 39, 60, 0.05); }
-  .drop-zone .icon {
-    width: 44px; height: 44px;
-    margin: 0 auto 16px;
-    border: 1.5px solid var(--red);
-    border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    color: var(--red);
-  }
-  .drop-zone .title { font-weight: 500; font-size: 1rem; color: var(--text); }
-  .drop-zone .hint { color: var(--text-muted); font-size: 0.85rem; margin-top: 6px; }
-  .file-chip {
-    display: none;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 20px;
-    background: var(--surface-2);
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.82rem;
-    color: var(--text);
-  }
-  .file-chip.show { display: flex; }
-  .file-chip button {
-    background: none; border: none; color: var(--text-muted);
-    cursor: pointer; font-size: 0.9rem;
-  }
+    /* ---------- Header ---------- */
+    header {
+      padding: 28px 0;
+      border-bottom: 1px solid var(--border);
+    }
 
-  /* ---------- Controls ---------- */
-  .controls {
-    margin-top: 28px;
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-    align-items: flex-end;
-  }
-  .field { flex: 1; min-width: 220px; }
-  .field label {
-    display: block;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    margin-bottom: 8px;
-  }
-  select {
-    width: 100%;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 12px 14px;
-    border-radius: 8px;
-    font-size: 0.95rem;
-    font-family: 'Inter', sans-serif;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238A6B6E'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 14px center;
-  }
-  .btn {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    font-size: 0.95rem;
-    padding: 13px 28px;
-    border-radius: 8px;
-    border: none;
-    background: var(--red);
-    color: #FFFFFF;
-    cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
-    white-space: nowrap;
-  }
-  .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(214, 39, 60, 0.25); background: var(--red-dark); }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    header .wrap {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
 
-  .warmup-notice {
-    display: none;
-    margin-top: 18px;
-    padding: 12px 16px;
-    border-left: 3px solid var(--red);
-    background: var(--surface-2);
-    font-size: 0.85rem;
-    color: var(--text);
-    font-family: 'IBM Plex Mono', monospace;
-  }
-  .warmup-notice.show { display: block; }
+    .logo {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+    }
 
-  .error-box {
-    display: none;
-    margin-top: 18px;
-    padding: 14px 16px;
-    border-left: 3px solid var(--danger);
-    background: #FCE8EA;
-    font-size: 0.9rem;
-    color: var(--danger);
-  }
-  .error-box.show { display: block; }
+    .logo .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+    }
 
-  /* ---------- Processing + progress bar ---------- */
-  .time-estimate {
-    margin-top: 10px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.78rem;
-    color: var(--text-muted);
-  }
-  .time-estimate strong { color: var(--red-dark); }
+    .tag {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+    }
 
-  .countdown-wrap {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-  }
-  .countdown-clock {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--red-dark);
-    letter-spacing: 0.02em;
-  }
-  .countdown-label {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-  }
+    /* ---------- Hero ---------- */
+    .hero {
+      padding: 72px 0 56px;
+    }
 
-  .limits-bar {
-    display: none;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 40px;
-    margin-bottom: 14px;
-    padding: 10px 16px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }
-  .limits-bar.show { display: flex; }
-  .limits-bar strong { color: var(--red-dark); font-weight: 600; }
-  .limits-bar .finish-state {
-    color: var(--text-muted);
-  }
-  .limits-bar .finish-state.is-done {
-    color: #1E8A4C;
-    font-weight: 600;
-  }
+    .eyebrow {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--red);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
 
-  .processing {
-    display: none;
-    margin-top: 0;
-  }
-  .processing.show { display: block; }
-  .processing-top {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 14px;
-  }
-  .wave { display: flex; gap: 3px; align-items: center; height: 24px; }
-  .wave span {
-    width: 3px;
-    background: var(--red);
-    border-radius: 2px;
-    animation: bounce 1.1s ease-in-out infinite;
-  }
-  .wave span:nth-child(1) { height: 8px; animation-delay: 0s; }
-  .wave span:nth-child(2) { height: 16px; animation-delay: 0.1s; }
-  .wave span:nth-child(3) { height: 24px; animation-delay: 0.2s; }
-  .wave span:nth-child(4) { height: 14px; animation-delay: 0.3s; }
-  .wave span:nth-child(5) { height: 20px; animation-delay: 0.4s; }
-  @keyframes bounce {
-    0%, 100% { transform: scaleY(0.4); }
-    50% { transform: scaleY(1); }
-  }
-  .processing .label { color: var(--text-muted); font-size: 0.9rem; font-family: 'IBM Plex Mono', monospace; }
+    h1 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 600;
+      font-size: clamp(2rem, 5vw, 3.1rem);
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+      max-width: 15ch;
+      color: var(--text);
+    }
 
-  .progress-track {
-    width: 100%;
-    height: 10px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    overflow: hidden;
-  }
-  .progress-fill {
-    height: 100%;
-    width: 0%;
-    background: var(--red);
-    border-radius: 999px;
-    transition: width 0.4s ease;
-  }
-  .progress-pct {
-    margin-top: 8px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-align: right;
-  }
+    h1 em {
+      font-style: normal;
+      color: var(--red);
+    }
 
-  @media (prefers-reduced-motion: reduce) {
-    .wave span { animation: none; }
-    .progress-fill { transition: none; }
-  }
+    .sub {
+      margin-top: 20px;
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      max-width: 46ch;
+    }
 
-  /* ---------- Results ---------- */
-  .results { display: none; margin-top: 56px; }
-  .results.show { display: block; }
-  .results-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-  .results-head h2 {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    font-size: 1.3rem;
-    color: var(--text);
-  }
-  .lang-badge {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.75rem;
-    color: var(--red);
-    background: var(--surface-2);
-    padding: 5px 10px;
-    border-radius: 6px;
-  }
-  .downloads { display: flex; gap: 10px; }
-  .btn-ghost {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.78rem;
-    padding: 9px 16px;
-    border-radius: 7px;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text);
-    cursor: pointer;
-  }
-  .btn-ghost:hover { border-color: var(--red); color: var(--red); }
+    /* ---------- Filmstrip upload zone ---------- */
+    .filmstrip {
+      margin-top: 48px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 1px 3px rgba(214, 39, 60, 0.06);
+    }
 
-  .caption-track {
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-  }
-  .caption-row {
-    display: grid;
-    grid-template-columns: 90px 1fr 1fr;
-    border-bottom: 1px solid var(--border);
-  }
-  .caption-row:last-child { border-bottom: none; }
-  .caption-row.head {
-    background: var(--surface-2);
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  .caption-row.head > div { padding: 10px 14px; }
-  .caption-row:not(.head) > div { padding: 14px; font-size: 0.92rem; }
-  .caption-row .t {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.72rem;
-    color: var(--red);
-    display: flex;
-    align-items: center;
-  }
-  .caption-row .orig { color: var(--text-muted); border-right: 1px solid var(--border); border-left: 1px solid var(--border); }
-  .caption-row .trans { color: var(--text); }
+    .sprockets {
+      display: flex;
+      justify-content: space-evenly;
+      padding: 10px 16px;
+      background: var(--surface-2);
+    }
 
-  footer {
-    margin-top: 90px;
-    padding: 28px 0 40px;
-    border-top: 1px solid var(--border);
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    font-family: 'IBM Plex Mono', monospace;
-  }
+    .sprockets span {
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      background: var(--red);
+      opacity: 0.35;
+    }
 
-  @media (max-width: 600px) {
-    .caption-row { grid-template-columns: 70px 1fr; }
-    .caption-row .orig { display: none; }
-  }
-</style>
+    .drop-zone {
+      padding: 44px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      border: none;
+      background: transparent;
+      width: 100%;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.dragover {
+      background: rgba(214, 39, 60, 0.05);
+    }
+
+    .drop-zone .icon {
+      width: 44px;
+      height: 44px;
+      margin: 0 auto 16px;
+      border: 1.5px solid var(--red);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--red);
+    }
+
+    .drop-zone .title {
+      font-weight: 500;
+      font-size: 1rem;
+      color: var(--text);
+    }
+
+    .drop-zone .hint {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-top: 6px;
+    }
+
+    .file-chip {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      background: var(--surface-2);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.82rem;
+      color: var(--text);
+    }
+
+    .file-chip.show {
+      display: flex;
+    }
+
+    .file-chip button {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    /* ---------- Controls ---------- */
+    .controls {
+      margin-top: 28px;
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+
+    .field {
+      flex: 1;
+      min-width: 220px;
+    }
+
+    .field label {
+      display: block;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    select {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-family: 'Inter', sans-serif;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238A6B6E'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+    }
+
+    .btn {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 13px 28px;
+      border-radius: 8px;
+      border: none;
+      background: var(--red);
+      color: #FFFFFF;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(214, 39, 60, 0.25);
+      background: var(--red-dark);
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .warmup-notice {
+      display: none;
+      margin-top: 18px;
+      padding: 12px 16px;
+      border-left: 3px solid var(--red);
+      background: var(--surface-2);
+      font-size: 0.85rem;
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .warmup-notice.show {
+      display: block;
+    }
+
+    .error-box {
+      display: none;
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-left: 3px solid var(--danger);
+      background: #FCE8EA;
+      font-size: 0.9rem;
+      color: var(--danger);
+    }
+
+    .error-box.show {
+      display: block;
+    }
+
+    /* ---------- Processing + progress bar ---------- */
+    .time-estimate {
+      margin-top: 10px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .time-estimate strong {
+      color: var(--red-dark);
+    }
+
+    .countdown-wrap {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .countdown-clock {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--red-dark);
+      letter-spacing: 0.02em;
+    }
+
+    .countdown-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .limits-bar {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 40px;
+      margin-bottom: 14px;
+      padding: 10px 16px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .limits-bar.show {
+      display: flex;
+    }
+
+    .limits-bar strong {
+      color: var(--red-dark);
+      font-weight: 600;
+    }
+
+    .limits-bar .finish-state {
+      color: var(--text-muted);
+    }
+
+    .limits-bar .finish-state.is-done {
+      color: #1E8A4C;
+      font-weight: 600;
+    }
+
+    .processing {
+      display: none;
+      margin-top: 0;
+    }
+
+    .processing.show {
+      display: block;
+    }
+
+    .processing-top {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .wave {
+      display: flex;
+      gap: 3px;
+      align-items: center;
+      height: 24px;
+    }
+
+    .wave span {
+      width: 3px;
+      background: var(--red);
+      border-radius: 2px;
+      animation: bounce 1.1s ease-in-out infinite;
+    }
+
+    .wave span:nth-child(1) {
+      height: 8px;
+      animation-delay: 0s;
+    }
+
+    .wave span:nth-child(2) {
+      height: 16px;
+      animation-delay: 0.1s;
+    }
+
+    .wave span:nth-child(3) {
+      height: 24px;
+      animation-delay: 0.2s;
+    }
+
+    .wave span:nth-child(4) {
+      height: 14px;
+      animation-delay: 0.3s;
+    }
+
+    .wave span:nth-child(5) {
+      height: 20px;
+      animation-delay: 0.4s;
+    }
+
+    @keyframes bounce {
+
+      0%,
+      100% {
+        transform: scaleY(0.4);
+      }
+
+      50% {
+        transform: scaleY(1);
+      }
+    }
+
+    .processing .label {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--red);
+      border-radius: 999px;
+      transition: width 0.4s ease;
+    }
+
+    .progress-pct {
+      margin-top: 8px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      text-align: right;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .wave span {
+        animation: none;
+      }
+
+      .progress-fill {
+        transition: none;
+      }
+    }
+
+    /* ---------- Results ---------- */
+    .results {
+      display: none;
+      margin-top: 56px;
+    }
+
+    .results.show {
+      display: block;
+    }
+
+    .results-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .results-head h2 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 600;
+      font-size: 1.3rem;
+      color: var(--text);
+    }
+
+    .lang-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--red);
+      background: var(--surface-2);
+      padding: 5px 10px;
+      border-radius: 6px;
+    }
+
+    .downloads {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-ghost {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.78rem;
+      padding: 9px 16px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .btn-ghost:hover {
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    .caption-track {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .caption-row {
+      display: grid;
+      grid-template-columns: 90px 1fr 1fr;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .caption-row:last-child {
+      border-bottom: none;
+    }
+
+    .caption-row.head {
+      background: var(--surface-2);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .caption-row.head>div {
+      padding: 10px 14px;
+    }
+
+    .caption-row:not(.head)>div {
+      padding: 14px;
+      font-size: 0.92rem;
+    }
+
+    .caption-row .t {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--red);
+      display: flex;
+      align-items: center;
+    }
+
+    .caption-row .orig {
+      color: var(--text-muted);
+      border-right: 1px solid var(--border);
+      border-left: 1px solid var(--border);
+    }
+
+    .caption-row .trans {
+      color: var(--text);
+    }
+
+    footer {
+      margin-top: 90px;
+      padding: 28px 0 40px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    @media (max-width: 600px) {
+      .caption-row {
+        grid-template-columns: 70px 1fr;
+      }
+
+      .caption-row .orig {
+        display: none;
+      }
+    }
+  </style>
 </head>
+
 <body>
 
-<header>
-  <div class="wrap">
-    <div class="logo"><span class="dot"></span>ScriptSync</div>
-    <div class="tag">VIDEO → SCRIPT → ANY LANGUAGE</div>
+  <header>
+    <div class="wrap">
+      <div class="logo"><span class="dot"></span>ScriptSync</div>
+      <div class="tag">VIDEO → SCRIPT → ANY LANGUAGE</div>
+    </div>
+  </header>
+
+  <div class="page-descriptor-wrap">
+    <div class="page-descriptor">
+      <span class="dot-sep"></span>
+      Turns any video into a timecoded, translated script — upload, pick a language, get the transcript side-by-side
+      with its translation.
+    </div>
   </div>
-</header>
 
-<div class="page-descriptor-wrap">
-  <div class="page-descriptor">
-    <span class="dot-sep"></span>
-    Turns any video into a timecoded, translated script — upload, pick a language, get the transcript side-by-side with its translation.
-  </div>
-</div>
+  <main class="wrap">
+    <section class="hero">
+      <div class="eyebrow">// transcribe · translate · export</div>
+      <h1>Every video speaks <em>more languages</em> than you think.</h1>
+      <p class="sub">Upload a clip, pick a language, get a timecoded script — transcribed and translated in one pass.
+      </p>
 
-<main class="wrap">
-  <section class="hero">
-    <div class="eyebrow">// transcribe · translate · export</div>
-    <h1>Every video speaks <em>more languages</em> than you think.</h1>
-    <p class="sub">Upload a clip, pick a language, get a timecoded script — transcribed and translated in one pass.</p>
-
-    <form id="upload-form" class="filmstrip">
-      <div class="sprockets">
-        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
-      </div>
-      <button type="button" class="drop-zone" id="drop-zone">
-        <div class="icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0-12l-4 4m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+      <form id="upload-form" class="filmstrip">
+        <div class="sprockets">
+          <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
         </div>
-        <div class="title">Drop your video, or click to browse</div>
-        <div class="hint">MP4, MOV, or WEBM · up to 500MB · no strict duration cap, but shorter clips (under ~15 min) process much faster on this free-tier server</div>
-      </button>
-      <div class="file-chip" id="file-chip">
-        <span id="file-name" class="mono"></span>
-        <button type="button" id="file-clear">Remove</button>
-      </div>
-      <div class="time-estimate" id="time-estimate"></div>
-      <input type="file" id="video-input" accept="video/*" hidden>
-      <div class="sprockets">
-        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
-      </div>
-    </form>
+        <button type="button" class="drop-zone" id="drop-zone">
+          <div class="icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 3v12m0-12l-4 4m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+            </svg>
+          </div>
+          <div class="title">Drop your video, or click to browse</div>
+          <div class="hint">MP4, MOV, or WEBM · up to 500MB · no strict duration cap, but shorter clips (under ~15 min)
+            process much faster on this free-tier server</div>
+        </button>
+        <div class="file-chip" id="file-chip">
+          <span id="file-name" class="mono"></span>
+          <button type="button" id="file-clear">Remove</button>
+        </div>
+        <div class="time-estimate" id="time-estimate"></div>
+        <input type="file" id="video-input" accept="video/*" hidden>
+        <div class="sprockets">
+          <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+      </form>
 
-    <div class="warmup-notice" id="warmup-notice">
-      ⏳ Model is still warming up on the server (this happens after every restart). You can wait here — it usually finishes in under a minute — or submit anyway, but your first request may take longer than the estimate below.
-    </div>
-
-    <div class="controls">
-      <div class="field">
-        <label for="language-select">Translate to</label>
-        <select id="language-select">
-          {% for name, code in languages.items() %}
-          <option value="{{ code }}" {% if name == 'Hindi' %}selected{% endif %}>{{ name }}</option>
-          {% endfor %}
-        </select>
+      <div class="warmup-notice" id="warmup-notice">
+        ⏳ Model is still warming up on the server (this happens after every restart). You can wait here — it usually
+        finishes in under a minute — or submit anyway, but your first request may take longer than the estimate below.
       </div>
-      <button type="button" class="btn" id="submit-btn" disabled>Generate script</button>
-    </div>
 
-    <div class="error-box" id="error-box"></div>
-
-    <div class="limits-bar" id="limits-bar">
-      <div>Max upload: <strong>500MB</strong> · Recommended length: <strong>under 15 min</strong> for reasonable free-tier speed</div>
-      <div class="countdown-wrap">
-        <span class="countdown-label">Elapsed:</span>
-        <span class="countdown-clock" id="countdown-clock">00:00</span>
-        <span class="finish-state" id="finish-state">Not finished yet…</span>
+      <div class="controls">
+        <div class="field">
+          <label for="language-select">Translate to</label>
+          <select id="language-select">
+            {% for name, code in languages.items() %}
+            <option value="{{ code }}" {% if name=='Hindi' %}selected{% endif %}>{{ name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="button" class="btn" id="submit-btn" disabled>Generate script</button>
       </div>
-    </div>
 
-    <div class="processing" id="processing">
-      <div class="processing-top">
-        <div class="wave"><span></span><span></span><span></span><span></span><span></span></div>
-        <div class="label" id="processing-label">Transcribing audio…</div>
-      </div>
-      <div class="progress-track">
-        <div class="progress-fill" id="progress-fill"></div>
-      </div>
-      <div class="progress-pct" id="progress-pct">0%</div>
-    </div>
-  </section>
+      <div class="error-box" id="error-box"></div>
 
-  <section class="results" id="results">
-    <div class="results-head">
-      <h2>Your script</h2>
-      <div style="display:flex; align-items:center; gap:12px;">
-        <span class="lang-badge mono" id="lang-badge"></span>
-        <div class="downloads">
-          <button class="btn-ghost" id="download-txt">↓ .txt</button>
-          <button class="btn-ghost" id="download-srt">↓ .srt</button>
+      <div class="limits-bar" id="limits-bar">
+        <div>Max upload: <strong>500MB</strong> · Recommended length: <strong>under 15 min</strong> for reasonable
+          free-tier speed</div>
+        <div class="countdown-wrap">
+          <span class="countdown-label">Elapsed:</span>
+          <span class="countdown-clock" id="countdown-clock">00:00</span>
+          <span class="finish-state" id="finish-state">Not finished yet…</span>
         </div>
       </div>
-    </div>
-    <div class="caption-track">
-      <div class="caption-row head">
-        <div>Time</div><div>Original</div><div>Translated</div>
+
+      <div class="processing" id="processing">
+        <div class="processing-top">
+          <div class="wave"><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="label" id="processing-label">Transcribing audio…</div>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div class="progress-pct" id="progress-pct">0%</div>
       </div>
-      <div id="caption-body"></div>
-    </div>
-  </section>
-</main>
+    </section>
 
-<footer>
-  <div class="wrap">ScriptSync — built with Flask + faster-whisper</div>
-</footer>
+    <section class="results" id="results">
+      <div class="results-head">
+        <h2>Your script</h2>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span class="lang-badge mono" id="lang-badge"></span>
+          <div class="downloads">
+            <button class="btn-ghost" id="download-txt">↓ .txt</button>
+            <button class="btn-ghost" id="download-srt">↓ .srt</button>
+            <button class="btn-ghost" id="download-docx">↓ Word</button>
+            <button class="btn-ghost" id="download-pdf">↓ PDF</button>
+            <button class="btn-ghost" id="download-pptx">↓ PPT</button>
+            <button class="btn-ghost" id="download-notes">↓ Notes</button>
+          </div>
+        </div>
+      </div>
+      <div class="caption-track">
+        <div class="caption-row head">
+          <div>Time</div>
+          <div>Original</div>
+          <div>Translated</div>
+        </div>
+        <div id="caption-body"></div>
+      </div>
+    </section>
+  </main>
 
-<script>
-  const dropZone = document.getElementById('drop-zone');
-  const videoInput = document.getElementById('video-input');
-  const fileChip = document.getElementById('file-chip');
-  const fileName = document.getElementById('file-name');
-  const fileClear = document.getElementById('file-clear');
-  const submitBtn = document.getElementById('submit-btn');
-  const errorBox = document.getElementById('error-box');
-  const processing = document.getElementById('processing');
-  const processingLabel = document.getElementById('processing-label');
-  const progressFill = document.getElementById('progress-fill');
-  const progressPct = document.getElementById('progress-pct');
-  const limitsBar = document.getElementById('limits-bar');
-  const finishState = document.getElementById('finish-state');
-  const timeEstimate = document.getElementById('time-estimate');
-  const countdownClock = document.getElementById('countdown-clock');
-  const warmupNotice = document.getElementById('warmup-notice');
+  <footer>
+    <div class="wrap">ScriptSync — built with Flask + faster-whisper</div>
+  </footer>
 
-  // Check whether the model has finished loading on the server. If not,
-  // show a notice and keep checking every few seconds until it's ready —
-  // this is purely informational and doesn't block submitting.
-  async function checkModelReady() {
-    try {
-      const res = await fetch('/api/ready');
-      const data = await res.json();
-      if (data.model_ready) {
-        warmupNotice.classList.remove('show');
-      } else {
-        warmupNotice.classList.add('show');
-        setTimeout(checkModelReady, 4000);
+  <script>
+    const dropZone = document.getElementById('drop-zone');
+    const videoInput = document.getElementById('video-input');
+    const fileChip = document.getElementById('file-chip');
+    const fileName = document.getElementById('file-name');
+    const fileClear = document.getElementById('file-clear');
+    const submitBtn = document.getElementById('submit-btn');
+    const errorBox = document.getElementById('error-box');
+    const processing = document.getElementById('processing');
+    const processingLabel = document.getElementById('processing-label');
+    const progressFill = document.getElementById('progress-fill');
+    const progressPct = document.getElementById('progress-pct');
+    const limitsBar = document.getElementById('limits-bar');
+    const finishState = document.getElementById('finish-state');
+    const timeEstimate = document.getElementById('time-estimate');
+    const countdownClock = document.getElementById('countdown-clock');
+    const warmupNotice = document.getElementById('warmup-notice');
+
+    // Check whether the model has finished loading on the server. If not,
+    // show a notice and keep checking every few seconds until it's ready —
+    // this is purely informational and doesn't block submitting.
+    async function checkModelReady() {
+      try {
+        const res = await fetch('/api/ready');
+        const data = await res.json();
+        if (data.model_ready) {
+          warmupNotice.classList.remove('show');
+        } else {
+          warmupNotice.classList.add('show');
+          setTimeout(checkModelReady, 4000);
+        }
+      } catch (err) {
+        // Silently retry; not critical if this check fails once.
+        setTimeout(checkModelReady, 6000);
       }
-    } catch (err) {
-      // Silently retry; not critical if this check fails once.
-      setTimeout(checkModelReady, 6000);
     }
-  }
-  checkModelReady();
-  const results = document.getElementById('results');
-  const captionBody = document.getElementById('caption-body');
-  const langBadge = document.getElementById('lang-badge');
-  const languageSelect = document.getElementById('language-select');
+    checkModelReady();
+    const results = document.getElementById('results');
+    const captionBody = document.getElementById('caption-body');
+    const langBadge = document.getElementById('lang-badge');
+    const languageSelect = document.getElementById('language-select');
 
-  let selectedFile = null;
-  let lastSegments = [];
-  let pollTimer = null;
-  let countdownTimer = null;
-  let estimatedSeconds = 0;
+    let selectedFile = null;
+    let lastSegments = [];
+    let lastJobId = null;
+    let pollTimer = null;
+    let countdownTimer = null;
+    let estimatedSeconds = 0;
+    let jobStartedAt = null;
+    let remainingSeconds = 0;
 
-  const STAGE_LABELS = {
-    queued: 'Queued — waiting for a free worker…',
-    extracting_audio: 'Extracting audio from video…',
-    loading_model: 'Loading transcription model (first request after a restart can take longer)…',
-    transcribing: 'Transcribing audio — this is the slow part on free tier…',
-    translating: 'Translating transcript…',
-    done: 'Done!',
-  };
+    const STAGE_LABELS = {
+      queued: 'Queued — waiting for a free worker…',
+      extracting_audio: 'Extracting audio from video…',
+      loading_model: 'Loading transcription model (first request after a restart can take longer)…',
+      transcribing: 'Transcribing audio — this is the slow part on free tier…',
+      translating: 'Translating transcript…',
+      done: 'Done!',
+    };
 
-  function formatClock(totalSeconds) {
-    const s = Math.max(0, Math.round(totalSeconds));
-    const m = Math.floor(s / 60).toString().padStart(2, '0');
-    const sec = (s % 60).toString().padStart(2, '0');
-    return `${m}:${sec}`;
-  }
+    function formatClock(totalSeconds) {
+      const s = Math.max(0, Math.round(totalSeconds));
+      const m = Math.floor(s / 60).toString().padStart(2, '0');
+      const sec = (s % 60).toString().padStart(2, '0');
+      return `${m}:${sec}`;
+    }
 
-  // Rough estimate for free-tier CPU (tiny model, batched translation):
-  // audio extraction + model overhead (~20s) + transcription
-  // (roughly 1.6x video length on CPU) + translation batching (~10s).
-  // This is a guideline, not a guarantee — actual time varies with
-  // cold starts, video complexity, and server load.
-  function estimateProcessingSeconds(videoDurationSeconds) {
-    const base = 20;
-    const transcribeFactor = 1.6;
-    const translateBuffer = 10;
-    return Math.round(base + (videoDurationSeconds * transcribeFactor) + translateBuffer);
-  }
+    // Rough estimate for free-tier CPU (tiny model, batched translation):
+    // audio extraction + model overhead (~20s) + transcription
+    // (roughly 1.6x video length on CPU) + translation batching (~10s).
+    // This is a guideline, not a guarantee — actual time varies with
+    // cold starts, video complexity, and server load.
+    function estimateProcessingSeconds(videoDurationSeconds) {
+      const base = 20;
+      const transcribeFactor = 1.6;
+      const translateBuffer = 10;
+      return Math.round(base + (videoDurationSeconds * transcribeFactor) + translateBuffer);
+    }
 
-  function readVideoDuration(file) {
-    return new Promise((resolve) => {
-      const videoEl = document.createElement('video');
-      videoEl.preload = 'metadata';
-      const url = URL.createObjectURL(file);
-      videoEl.onloadedmetadata = () => {
-        URL.revokeObjectURL(url);
-        resolve(isFinite(videoEl.duration) ? videoEl.duration : null);
-      };
-      videoEl.onerror = () => {
-        URL.revokeObjectURL(url);
-        resolve(null);
-      };
-      videoEl.src = url;
+    function readVideoDuration(file) {
+      return new Promise((resolve) => {
+        const videoEl = document.createElement('video');
+        videoEl.preload = 'metadata';
+        const url = URL.createObjectURL(file);
+        videoEl.onloadedmetadata = () => {
+          URL.revokeObjectURL(url);
+          resolve(isFinite(videoEl.duration) ? videoEl.duration : null);
+        };
+        videoEl.onerror = () => {
+          URL.revokeObjectURL(url);
+          resolve(null);
+        };
+        videoEl.src = url;
+      });
+    }
+
+    function startCountdown(initialSeconds) {
+      stopCountdown();
+      jobStartedAt = Date.now();
+      remainingSeconds = Math.max(initialSeconds, 3);
+      countdownClock.textContent = formatClock(remainingSeconds);
+      countdownTimer = setInterval(() => {
+        remainingSeconds = Math.max(0, remainingSeconds - 1);
+        countdownClock.textContent = formatClock(remainingSeconds);
+      }, 1000);
+    }
+
+    // Re-syncs the countdown using real progress data instead of the
+    // original guess. Once we know e.g. "40% done after 20s elapsed", we
+    // can recompute a much more accurate remaining time: total ≈ elapsed /
+    // (progress/100), remaining ≈ total − elapsed. This makes the clock
+    // correct itself as real data comes in, rather than sticking to a
+    // fixed number that was only ever a guess.
+    function syncCountdownFromProgress(progressPct) {
+      if (!jobStartedAt || progressPct <= 5) return; // too early to trust
+      const elapsed = (Date.now() - jobStartedAt) / 1000;
+      const estimatedTotal = elapsed / (progressPct / 100);
+      const newRemaining = Math.max(2, Math.round(estimatedTotal - elapsed));
+      remainingSeconds = newRemaining;
+    }
+
+    function finishCountdown() {
+      stopCountdown();
+      countdownClock.textContent = '00:00';
+    }
+
+    function stopCountdown() {
+      if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+      }
+    }
+
+    dropZone.addEventListener('click', () => videoInput.click());
+    ['dragover', 'dragenter'].forEach(evt =>
+      dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.add('dragover'); })
+    );
+    ['dragleave', 'drop'].forEach(evt =>
+      dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.remove('dragover'); })
+    );
+    dropZone.addEventListener('drop', e => {
+      if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
     });
-  }
+    videoInput.addEventListener('change', e => {
+      if (e.target.files.length) setFile(e.target.files[0]);
+    });
+    fileClear.addEventListener('click', () => {
+      selectedFile = null;
+      videoInput.value = '';
+      fileChip.classList.remove('show');
+      submitBtn.disabled = true;
+      timeEstimate.textContent = '';
+      estimatedSeconds = 0;
+    });
 
-  function startStopwatch() {
-    stopStopwatch();
-    const startedAt = Date.now();
-    countdownClock.textContent = formatClock(0);
-    countdownTimer = setInterval(() => {
-      const elapsed = (Date.now() - startedAt) / 1000;
-      countdownClock.textContent = formatClock(elapsed);
-    }, 1000);
-  }
-
-  function stopStopwatch() {
-    if (countdownTimer) {
-      clearInterval(countdownTimer);
-      countdownTimer = null;
-    }
-  }
-
-  dropZone.addEventListener('click', () => videoInput.click());
-  ['dragover', 'dragenter'].forEach(evt =>
-    dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.add('dragover'); })
-  );
-  ['dragleave', 'drop'].forEach(evt =>
-    dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.remove('dragover'); })
-  );
-  dropZone.addEventListener('drop', e => {
-    if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
-  });
-  videoInput.addEventListener('change', e => {
-    if (e.target.files.length) setFile(e.target.files[0]);
-  });
-  fileClear.addEventListener('click', () => {
-    selectedFile = null;
-    videoInput.value = '';
-    fileChip.classList.remove('show');
-    submitBtn.disabled = true;
-    timeEstimate.textContent = '';
-    estimatedSeconds = 0;
-  });
-
-  async function setFile(file) {
-    selectedFile = file;
-    fileName.textContent = `${file.name} · ${(file.size / (1024*1024)).toFixed(1)}MB`;
-    fileChip.classList.add('show');
-    submitBtn.disabled = false;
-    hideError();
-
-    timeEstimate.textContent = 'Reading video length…';
-    const duration = await readVideoDuration(file);
-    if (duration) {
-      estimatedSeconds = estimateProcessingSeconds(duration);
-      timeEstimate.innerHTML = `Video length: <strong>${formatClock(duration)}</strong> · Rough guideline only: often around <strong>${formatClock(estimatedSeconds)}</strong>, but actual time varies a lot depending on server load — the clock below shows real elapsed time, not a prediction.`;
-    } else {
-      estimatedSeconds = 60;
-      timeEstimate.textContent = "Couldn't read video length. The clock below will show real elapsed time once processing starts.";
-    }
-  }
-
-  function showError(msg) {
-    errorBox.textContent = msg;
-    errorBox.classList.add('show');
-  }
-  function hideError() { errorBox.classList.remove('show'); }
-
-  function setProgress(pct) {
-    const clamped = Math.max(0, Math.min(100, pct));
-    progressFill.style.width = clamped + '%';
-    progressPct.textContent = clamped + '%';
-  }
-
-  function stopPolling() {
-    if (pollTimer) {
-      clearTimeout(pollTimer);
-      pollTimer = null;
-    }
-  }
-
-  submitBtn.addEventListener('click', async () => {
-    if (!selectedFile) return;
-    hideError();
-    results.classList.remove('show');
-    submitBtn.disabled = true;
-    processing.classList.add('show');
-    limitsBar.classList.add('show');
-    finishState.textContent = 'Not finished yet…';
-    finishState.classList.remove('is-done');
-    setProgress(0);
-    processingLabel.textContent = STAGE_LABELS.queued;
-    startStopwatch();
-
-    const formData = new FormData();
-    formData.append('video', selectedFile);
-    formData.append('language', languageSelect.value);
-
-    try {
-      const res = await fetch('/api/process', { method: 'POST', body: formData });
-      const data = await res.json();
-
-      if (!res.ok) {
-        showError(data.error || 'Something went wrong. Try a shorter clip.');
-        processing.classList.remove('show');
-        stopStopwatch();
-        submitBtn.disabled = false;
-        return;
-      }
-
-      pollStatus(data.job_id);
-    } catch (err) {
-      showError('Could not reach the server. Check your connection and try again.');
-      processing.classList.remove('show');
-      stopStopwatch();
+    async function setFile(file) {
+      selectedFile = file;
+      fileName.textContent = `${file.name} · ${(file.size / (1024 * 1024)).toFixed(1)}MB`;
+      fileChip.classList.add('show');
       submitBtn.disabled = false;
+      hideError();
+
+      timeEstimate.textContent = 'Reading video length…';
+      const duration = await readVideoDuration(file);
+      if (duration) {
+        estimatedSeconds = estimateProcessingSeconds(duration);
+        timeEstimate.innerHTML = `Video length: <strong>${formatClock(duration)}</strong> · Starting estimate: <strong>${formatClock(estimatedSeconds)}</strong> — the countdown below corrects itself using real progress once processing starts.`;
+      } else {
+        estimatedSeconds = 60;
+        timeEstimate.textContent = "Couldn't read video length. The clock below will show real elapsed time once processing starts.";
+      }
     }
-  });
 
-  async function pollStatus(jobId) {
-    try {
-      const res = await fetch(`/api/status/${jobId}`);
-      const data = await res.json();
-
-      if (!res.ok) {
-        showError(data.error || 'Lost track of this job. Please try again.');
-        processing.classList.remove('show');
-        stopStopwatch();
-        submitBtn.disabled = false;
-        stopPolling();
-        return;
-      }
-
-      setProgress(data.progress || 0);
-      processingLabel.textContent = STAGE_LABELS[data.status] || 'Working…';
-
-      if (data.status === 'done') {
-        stopPolling();
-        stopStopwatch();
-        finishState.textContent = '✓ Finished';
-        finishState.classList.add('is-done');
-        renderResults(data.result);
-        processing.classList.remove('show');
-        submitBtn.disabled = false;
-        return;
-      }
-
-      if (data.status === 'error') {
-        stopPolling();
-        stopStopwatch();
-        finishState.textContent = 'Stopped — see error below';
-        finishState.classList.remove('is-done');
-        showError(data.error || 'Something went wrong while processing your video.');
-        processing.classList.remove('show');
-        submitBtn.disabled = false;
-        return;
-      }
-
-      pollTimer = setTimeout(() => pollStatus(jobId), 3000);
-    } catch (err) {
-      pollTimer = setTimeout(() => pollStatus(jobId), 5000);
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.classList.add('show');
     }
-  }
+    function hideError() { errorBox.classList.remove('show'); }
 
-  function formatTime(s) {
-    const m = Math.floor(s / 60).toString().padStart(2, '0');
-    const sec = Math.floor(s % 60).toString().padStart(2, '0');
-    return `${m}:${sec}`;
-  }
+    function setProgress(pct) {
+      const clamped = Math.max(0, Math.min(100, pct));
+      progressFill.style.width = clamped + '%';
+      progressPct.textContent = clamped + '%';
+    }
 
-  function renderResults(data) {
-    lastSegments = data.segments;
-    const langLabel = languageSelect.options[languageSelect.selectedIndex].text;
-    langBadge.textContent = `${data.detected_language.toUpperCase()} → ${langLabel}`;
+    function stopPolling() {
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+    }
 
-    captionBody.innerHTML = data.segments.map(seg => `
+    submitBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+      hideError();
+      results.classList.remove('show');
+      submitBtn.disabled = true;
+      processing.classList.add('show');
+      limitsBar.classList.add('show');
+      finishState.textContent = 'Not finished yet…';
+      finishState.classList.remove('is-done');
+      setProgress(0);
+      processingLabel.textContent = STAGE_LABELS.queued;
+      startCountdown(estimatedSeconds || 45);
+
+      const formData = new FormData();
+      formData.append('video', selectedFile);
+      formData.append('language', languageSelect.value);
+
+      try {
+        const res = await fetch('/api/process', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.error || 'Something went wrong. Try a shorter clip.');
+          processing.classList.remove('show');
+          stopCountdown();
+          submitBtn.disabled = false;
+          return;
+        }
+
+        pollStatus(data.job_id);
+      } catch (err) {
+        showError('Could not reach the server. Check your connection and try again.');
+        processing.classList.remove('show');
+        stopCountdown();
+        submitBtn.disabled = false;
+      }
+    });
+
+    async function pollStatus(jobId) {
+      try {
+        const res = await fetch(`/api/status/${jobId}`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.error || 'Lost track of this job. Please try again.');
+          processing.classList.remove('show');
+          stopCountdown();
+          submitBtn.disabled = false;
+          stopPolling();
+          return;
+        }
+
+        setProgress(data.progress || 0);
+        processingLabel.textContent = STAGE_LABELS[data.status] || 'Working…';
+        syncCountdownFromProgress(data.progress || 0);
+
+        if (data.status === 'done') {
+          stopPolling();
+          finishCountdown();
+          lastJobId = jobId;
+          finishState.textContent = '✓ Finished';
+          finishState.classList.add('is-done');
+          renderResults(data.result);
+          processing.classList.remove('show');
+          submitBtn.disabled = false;
+          return;
+        }
+
+        if (data.status === 'error') {
+          stopPolling();
+          stopCountdown();
+          finishState.textContent = 'Stopped — see error below';
+          finishState.classList.remove('is-done');
+          showError(data.error || 'Something went wrong while processing your video.');
+          processing.classList.remove('show');
+          submitBtn.disabled = false;
+          return;
+        }
+
+        pollTimer = setTimeout(() => pollStatus(jobId), 3000);
+      } catch (err) {
+        pollTimer = setTimeout(() => pollStatus(jobId), 5000);
+      }
+    }
+
+    function formatTime(s) {
+      const m = Math.floor(s / 60).toString().padStart(2, '0');
+      const sec = Math.floor(s % 60).toString().padStart(2, '0');
+      return `${m}:${sec}`;
+    }
+
+    function renderResults(data) {
+      lastSegments = data.segments;
+      const langLabel = languageSelect.options[languageSelect.selectedIndex].text;
+      langBadge.textContent = `${data.detected_language.toUpperCase()} → ${langLabel}`;
+
+      captionBody.innerHTML = data.segments.map(seg => `
       <div class="caption-row">
         <div class="t">${formatTime(seg.start)}</div>
         <div class="orig">${escapeHtml(seg.original)}</div>
@@ -830,47 +1073,70 @@
       </div>
     `).join('');
 
-    results.classList.add('show');
-    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+      results.classList.add('show');
+      results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
 
-  function srtTime(s) {
-    const h = Math.floor(s / 3600).toString().padStart(2, '0');
-    const m = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
-    const sec = Math.floor(s % 60).toString().padStart(2, '0');
-    const ms = Math.floor((s - Math.floor(s)) * 1000).toString().padStart(3, '0');
-    return `${h}:${m}:${sec},${ms}`;
-  }
+    function srtTime(s) {
+      const h = Math.floor(s / 3600).toString().padStart(2, '0');
+      const m = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
+      const sec = Math.floor(s % 60).toString().padStart(2, '0');
+      const ms = Math.floor((s - Math.floor(s)) * 1000).toString().padStart(3, '0');
+      return `${h}:${m}:${sec},${ms}`;
+    }
 
-  function download(filename, content) {
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+    function download(filename, content) {
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
 
-  document.getElementById('download-txt').addEventListener('click', () => {
-    if (!lastSegments.length) return;
-    const text = lastSegments.map(s => s.translated).join(' ');
-    download('scriptsync_translated.txt', text);
-  });
+    document.getElementById('download-txt').addEventListener('click', () => {
+      if (!lastSegments.length) return;
+      const text = lastSegments.map(s => s.translated).join(' ');
+      download('scriptsync_translated.txt', text);
+    });
 
-  document.getElementById('download-srt').addEventListener('click', () => {
-    if (!lastSegments.length) return;
-    const srt = lastSegments.map((s, i) =>
-      `${i + 1}\n${srtTime(s.start)} --> ${srtTime(s.end)}\n${s.translated}\n`
-    ).join('\n');
-    download('scriptsync_translated.srt', srt);
-  });
-</script>
+    document.getElementById('download-srt').addEventListener('click', () => {
+      if (!lastSegments.length) return;
+      const srt = lastSegments.map((s, i) =>
+        `${i + 1}\n${srtTime(s.start)} --> ${srtTime(s.end)}\n${s.translated}\n`
+      ).join('\n');
+      download('scriptsync_translated.srt', srt);
+    });
+
+    // These formats are generated server-side (Word, PDF, PPT with images,
+    // Notes). Since PPT/Notes fetch one image per segment from the web,
+    // those two can take a bit longer than the others.
+    function exportServerFormat(fmt, button) {
+      if (!lastJobId) return;
+      const originalText = button.textContent;
+      button.textContent = 'Preparing…';
+      button.disabled = true;
+      const cleanup = () => { button.textContent = originalText; button.disabled = false; };
+      // Trigger the download via a hidden link; the browser handles the
+      // actual file transfer, so we just re-enable the button shortly after.
+      const a = document.createElement('a');
+      a.href = `/api/export/${lastJobId}/${fmt}`;
+      a.click();
+      setTimeout(cleanup, fmt === 'pptx' || fmt === 'notes' ? 15000 : 4000);
+    }
+
+    document.getElementById('download-docx').addEventListener('click', (e) => exportServerFormat('docx', e.currentTarget));
+    document.getElementById('download-pdf').addEventListener('click', (e) => exportServerFormat('pdf', e.currentTarget));
+    document.getElementById('download-pptx').addEventListener('click', (e) => exportServerFormat('pptx', e.currentTarget));
+    document.getElementById('download-notes').addEventListener('click', (e) => exportServerFormat('notes', e.currentTarget));
+  </script>
 
 </body>
+
 </html>
