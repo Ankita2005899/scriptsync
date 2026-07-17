@@ -246,6 +246,28 @@
   .error-box.show { display: block; }
 
   /* ---------- Processing + progress bar ---------- */
+  .time-estimate {
+    margin-top: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+  .time-estimate strong { color: var(--red-dark); }
+
+  .countdown-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .countdown-clock {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--red-dark);
+    letter-spacing: 0.02em;
+  }
+  .countdown-clock.at-zero { color: var(--text-muted); }
+
   .limits-bar {
     display: none;
     align-items: center;
@@ -450,6 +472,7 @@
         <span id="file-name" class="mono"></span>
         <button type="button" id="file-clear">Remove</button>
       </div>
+      <div class="time-estimate" id="time-estimate"></div>
       <input type="file" id="video-input" accept="video/*" hidden>
       <div class="sprockets">
         <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
@@ -472,7 +495,10 @@
 
     <div class="limits-bar" id="limits-bar">
       <div>Max upload: <strong>500MB</strong> · Recommended length: <strong>under 15 min</strong> for reasonable free-tier speed</div>
-      <div class="finish-state" id="finish-state">Not finished yet…</div>
+      <div class="countdown-wrap">
+        <span class="countdown-clock" id="countdown-clock">--:--</span>
+        <span class="finish-state" id="finish-state">Not finished yet…</span>
+      </div>
     </div>
 
     <div class="processing" id="processing">
@@ -525,6 +551,8 @@
   const progressPct = document.getElementById('progress-pct');
   const limitsBar = document.getElementById('limits-bar');
   const finishState = document.getElementById('finish-state');
+  const timeEstimate = document.getElementById('time-estimate');
+  const countdownClock = document.getElementById('countdown-clock');
   const results = document.getElementById('results');
   const captionBody = document.getElementById('caption-body');
   const langBadge = document.getElementById('lang-badge');
@@ -533,6 +561,8 @@
   let selectedFile = null;
   let lastSegments = [];
   let pollTimer = null;
+  let countdownTimer = null;
+  let estimatedSeconds = 0;
 
   const STAGE_LABELS = {
     queued: 'Queued — waiting for a free worker…',
@@ -541,6 +571,66 @@
     translating: 'Translating transcript…',
     done: 'Done!',
   };
+
+  function formatClock(totalSeconds) {
+    const s = Math.max(0, Math.round(totalSeconds));
+    const m = Math.floor(s / 60).toString().padStart(2, '0');
+    const sec = (s % 60).toString().padStart(2, '0');
+    return `${m}:${sec}`;
+  }
+
+  // Rough estimate for free-tier CPU (tiny model, batched translation):
+  // audio extraction + model overhead (~20s) + transcription
+  // (roughly 1.6x video length on CPU) + translation batching (~10s).
+  // This is a guideline, not a guarantee — actual time varies with
+  // cold starts, video complexity, and server load.
+  function estimateProcessingSeconds(videoDurationSeconds) {
+    const base = 20;
+    const transcribeFactor = 1.6;
+    const translateBuffer = 10;
+    return Math.round(base + (videoDurationSeconds * transcribeFactor) + translateBuffer);
+  }
+
+  function readVideoDuration(file) {
+    return new Promise((resolve) => {
+      const videoEl = document.createElement('video');
+      videoEl.preload = 'metadata';
+      const url = URL.createObjectURL(file);
+      videoEl.onloadedmetadata = () => {
+        URL.revokeObjectURL(url);
+        resolve(isFinite(videoEl.duration) ? videoEl.duration : null);
+      };
+      videoEl.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      videoEl.src = url;
+    });
+  }
+
+  function startCountdown(seconds) {
+    stopCountdown();
+    let remaining = seconds;
+    countdownClock.classList.remove('at-zero');
+    countdownClock.textContent = formatClock(remaining);
+    countdownTimer = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        remaining = 0;
+        countdownClock.classList.add('at-zero');
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+      }
+      countdownClock.textContent = formatClock(remaining);
+    }, 1000);
+  }
+
+  function stopCountdown() {
+    if (countdownTimer) {
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+    }
+  }
 
   dropZone.addEventListener('click', () => videoInput.click());
   ['dragover', 'dragenter'].forEach(evt =>
@@ -560,14 +650,26 @@
     videoInput.value = '';
     fileChip.classList.remove('show');
     submitBtn.disabled = true;
+    timeEstimate.textContent = '';
+    estimatedSeconds = 0;
   });
 
-  function setFile(file) {
+  async function setFile(file) {
     selectedFile = file;
     fileName.textContent = `${file.name} · ${(file.size / (1024*1024)).toFixed(1)}MB`;
     fileChip.classList.add('show');
     submitBtn.disabled = false;
     hideError();
+
+    timeEstimate.textContent = 'Reading video length…';
+    const duration = await readVideoDuration(file);
+    if (duration) {
+      estimatedSeconds = estimateProcessingSeconds(duration);
+      timeEstimate.innerHTML = `Video length: <strong>${formatClock(duration)}</strong> · Estimated processing time: <strong>${formatClock(estimatedSeconds)}</strong> (free-tier CPU estimate)`;
+    } else {
+      estimatedSeconds = 60;
+      timeEstimate.textContent = "Couldn't read video length — showing a default estimate once processing starts.";
+    }
   }
 
   function showError(msg) {
@@ -600,6 +702,7 @@
     finishState.classList.remove('is-done');
     setProgress(0);
     processingLabel.textContent = STAGE_LABELS.queued;
+    startCountdown(estimatedSeconds || 60);
 
     const formData = new FormData();
     formData.append('video', selectedFile);
@@ -612,6 +715,7 @@
       if (!res.ok) {
         showError(data.error || 'Something went wrong. Try a shorter clip.');
         processing.classList.remove('show');
+        stopCountdown();
         submitBtn.disabled = false;
         return;
       }
@@ -620,6 +724,7 @@
     } catch (err) {
       showError('Could not reach the server. Check your connection and try again.');
       processing.classList.remove('show');
+      stopCountdown();
       submitBtn.disabled = false;
     }
   });
@@ -632,6 +737,7 @@
       if (!res.ok) {
         showError(data.error || 'Lost track of this job. Please try again.');
         processing.classList.remove('show');
+        stopCountdown();
         submitBtn.disabled = false;
         stopPolling();
         return;
@@ -642,6 +748,7 @@
 
       if (data.status === 'done') {
         stopPolling();
+        stopCountdown();
         finishState.textContent = '✓ Finished';
         finishState.classList.add('is-done');
         renderResults(data.result);
@@ -652,6 +759,7 @@
 
       if (data.status === 'error') {
         stopPolling();
+        stopCountdown();
         finishState.textContent = 'Stopped — see error below';
         finishState.classList.remove('is-done');
         showError(data.error || 'Something went wrong while processing your video.');
