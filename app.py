@@ -5,6 +5,7 @@ import threading
 import uuid
 import time
 
+import requests
 from flask import Flask, render_template, request, jsonify
 from faster_whisper import WhisperModel
 from deep_translator import GoogleTranslator
@@ -15,6 +16,14 @@ app = Flask(__name__)
 # Note: this does NOT change Render free tier's 512MB RAM ceiling.
 # A very large video can still crash/hang the worker during transcription.
 app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500MB
+
+# If set, /api/process forwards the video to a GPU-backed Colab server
+# instead of processing it locally on Render's slow free-tier CPU.
+# Set this in Render -> Environment -> COLAB_BACKEND_URL to the ngrok URL
+# printed by the Colab notebook's last cell (no trailing slash).
+# If unset, empty, or unreachable, this app falls back to local CPU
+# processing automatically -- nothing breaks if you don't have Colab running.
+COLAB_BACKEND_URL = os.environ.get("COLAB_BACKEND_URL", "").rstrip("/")
 
 MODEL_SIZE = os.environ.get("WHISPER_MODEL", "tiny")  # tiny/base = free-tier safe
 _model = None
@@ -85,9 +94,58 @@ def _set_job(job_id, **fields):
             JOBS[job_id].update(fields)
 
 
+def _try_colab_backend(job_id, video_path, target_lang):
+    """
+    Attempts to forward the video to the Colab GPU backend. Returns True if
+    it succeeded and the job was completed this way, False if it should
+    fall back to local CPU processing instead (Colab not configured, not
+    reachable, or it returned an error).
+    """
+    if not COLAB_BACKEND_URL:
+        return False
+
+    _set_job(job_id, status="transcribing")  # Colab is fast enough that finer stages aren't very useful
+    try:
+        with open(video_path, "rb") as f:
+            resp = requests.post(
+                f"{COLAB_BACKEND_URL}/api/process",
+                files={"video": (os.path.basename(video_path), f)},
+                data={"language": target_lang},
+                timeout=180,  # Colab GPU should be much faster than this
+            )
+        if resp.status_code != 200:
+            # Colab reachable but returned an error -- fall back to local.
+            return False
+
+        data = resp.json()
+        if "segments" not in data:
+            return False
+
+        _set_job(job_id, status="translating")  # brief, mostly for UI continuity
+        _set_job(
+            job_id,
+            status="done",
+            result={
+                "detected_language": data.get("detected_language", "unknown"),
+                "target_language": data.get("target_language", target_lang),
+                "segments": data["segments"],
+            },
+        )
+        return True
+
+    except (requests.exceptions.RequestException, ValueError):
+        # Colab notebook not running, tunnel expired, network hiccup, or
+        # bad JSON -- silently fall back to local processing below.
+        return False
+
+
 def run_job(job_id, video_path, target_lang, tmp_dir):
     """Runs in a background thread. Does the actual heavy lifting."""
     try:
+        if _try_colab_backend(job_id, video_path, target_lang):
+            return  # Colab handled it successfully; nothing more to do.
+
+        # Fallback: process locally on Render's CPU, same as before.
         _set_job(job_id, status="extracting_audio")
 
         audio_path = os.path.join(tmp_dir, "audio.wav")
