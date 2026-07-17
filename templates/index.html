@@ -246,9 +246,35 @@
   .error-box.show { display: block; }
 
   /* ---------- Processing + progress bar ---------- */
+  .limits-bar {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 40px;
+    margin-bottom: 14px;
+    padding: 10px 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  .limits-bar.show { display: flex; }
+  .limits-bar strong { color: var(--red-dark); font-weight: 600; }
+  .limits-bar .finish-state {
+    color: var(--text-muted);
+  }
+  .limits-bar .finish-state.is-done {
+    color: #1E8A4C;
+    font-weight: 600;
+  }
+
   .processing {
     display: none;
-    margin-top: 40px;
+    margin-top: 0;
   }
   .processing.show { display: block; }
   .processing-top {
@@ -418,7 +444,7 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0-12l-4 4m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
         </div>
         <div class="title">Drop your video, or click to browse</div>
-        <div class="hint">MP4, MOV, or WEBM · up to 60MB · max 10 min</div>
+        <div class="hint">MP4, MOV, or WEBM · up to 500MB · no strict duration cap, but shorter clips (under ~15 min) process much faster on this free-tier server</div>
       </button>
       <div class="file-chip" id="file-chip">
         <span id="file-name" class="mono"></span>
@@ -443,6 +469,11 @@
     </div>
 
     <div class="error-box" id="error-box"></div>
+
+    <div class="limits-bar" id="limits-bar">
+      <div>Max upload: <strong>500MB</strong> · Recommended length: <strong>under 15 min</strong> for reasonable free-tier speed</div>
+      <div class="finish-state" id="finish-state">Not finished yet…</div>
+    </div>
 
     <div class="processing" id="processing">
       <div class="processing-top">
@@ -492,6 +523,8 @@
   const processingLabel = document.getElementById('processing-label');
   const progressFill = document.getElementById('progress-fill');
   const progressPct = document.getElementById('progress-pct');
+  const limitsBar = document.getElementById('limits-bar');
+  const finishState = document.getElementById('finish-state');
   const results = document.getElementById('results');
   const captionBody = document.getElementById('caption-body');
   const langBadge = document.getElementById('lang-badge');
@@ -562,6 +595,9 @@
     results.classList.remove('show');
     submitBtn.disabled = true;
     processing.classList.add('show');
+    limitsBar.classList.add('show');
+    finishState.textContent = 'Not finished yet…';
+    finishState.classList.remove('is-done');
     setProgress(0);
     processingLabel.textContent = STAGE_LABELS.queued;
 
@@ -606,6 +642,8 @@
 
       if (data.status === 'done') {
         stopPolling();
+        finishState.textContent = '✓ Finished';
+        finishState.classList.add('is-done');
         renderResults(data.result);
         processing.classList.remove('show');
         submitBtn.disabled = false;
@@ -614,6 +652,8 @@
 
       if (data.status === 'error') {
         stopPolling();
+        finishState.textContent = 'Stopped — see error below';
+        finishState.classList.remove('is-done');
         showError(data.error || 'Something went wrong while processing your video.');
         processing.classList.remove('show');
         submitBtn.disabled = false;

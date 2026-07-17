@@ -1,6 +1,9 @@
 import os
 import shutil
 import tempfile
+import threading
+import uuid
+import time
 
 from flask import Flask, render_template, request, jsonify
 from faster_whisper import WhisperModel
@@ -9,20 +12,22 @@ import moviepy.editor as mp
 
 app = Flask(__name__)
 
-# Raised from 60MB — no longer capping uploads tightly.
 # Note: this does NOT change Render free tier's 512MB RAM ceiling.
 # A very large video can still crash/hang the worker during transcription.
 app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500MB
 
 MODEL_SIZE = os.environ.get("WHISPER_MODEL", "tiny")  # tiny/base = free-tier safe
 _model = None
+_model_lock = threading.Lock()
 
 
 def get_model():
     """Load the whisper model once, lazily (keeps cold-start fast)."""
     global _model
     if _model is None:
-        _model = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
+        with _model_lock:
+            if _model is None:
+                _model = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
     return _model
 
 
@@ -34,6 +39,123 @@ LANGUAGES = {
     "Russian": "ru", "Chinese (Simplified)": "zh-CN", "Japanese": "ja",
     "Korean": "ko", "Arabic": "ar",
 }
+
+# In-memory job store. Fine for a single free-tier worker;
+# jobs are lost on redeploy/restart, which is acceptable here.
+JOBS = {}
+JOBS_LOCK = threading.Lock()
+
+# Drop jobs older than this so memory doesn't grow forever (seconds)
+JOB_TTL_SECONDS = 60 * 60  # 1 hour
+
+# Ordered stages used to compute a progress percentage on the frontend
+STAGE_ORDER = ["queued", "extracting_audio", "transcribing", "translating", "done"]
+
+
+def _cleanup_old_jobs():
+    cutoff = time.time() - JOB_TTL_SECONDS
+    with JOBS_LOCK:
+        stale = [jid for jid, job in JOBS.items() if job.get("created_at", 0) < cutoff]
+        for jid in stale:
+            JOBS.pop(jid, None)
+
+
+def _set_job(job_id, **fields):
+    with JOBS_LOCK:
+        if job_id in JOBS:
+            JOBS[job_id].update(fields)
+
+
+def run_job(job_id, video_path, target_lang, tmp_dir):
+    """Runs in a background thread. Does the actual heavy lifting."""
+    try:
+        _set_job(job_id, status="extracting_audio")
+
+        audio_path = os.path.join(tmp_dir, "audio.wav")
+        clip = mp.VideoFileClip(video_path)
+        clip.audio.write_audiofile(audio_path, logger=None)
+        clip.close()
+
+        _set_job(job_id, status="transcribing")
+
+        model = get_model()
+        # beam_size=1 is noticeably faster than 5 on CPU with only a small
+        # accuracy tradeoff. condition_on_previous_text=False avoids the
+        # model re-reading its own prior output as context, which also
+        # costs extra compute on CPU.
+        segments_gen, info = model.transcribe(
+            audio_path,
+            beam_size=1,
+            vad_filter=True,
+            condition_on_previous_text=False,
+        )
+        raw_segments = [
+            {"start": round(seg.start, 2), "end": round(seg.end, 2), "original": seg.text.strip()}
+            for seg in segments_gen if seg.text.strip()
+        ]
+
+        _set_job(job_id, status="translating")
+
+        # Batch translation instead of one API call per segment.
+        # deep_translator's GoogleTranslator has a ~5000 char limit per call,
+        # so we join segments with a unique delimiter and split the result
+        # back apart, cutting dozens of network round-trips down to just a few.
+        translator = GoogleTranslator(source="auto", target=target_lang)
+        DELIM = "\n|||\n"
+        BATCH_CHAR_LIMIT = 4000
+
+        batches = []
+        current_batch, current_len = [], 0
+        for seg in raw_segments:
+            seg_len = len(seg["original"]) + len(DELIM)
+            if current_batch and current_len + seg_len > BATCH_CHAR_LIMIT:
+                batches.append(current_batch)
+                current_batch, current_len = [], 0
+            current_batch.append(seg)
+            current_len += seg_len
+        if current_batch:
+            batches.append(current_batch)
+
+        segments = []
+        for batch in batches:
+            joined = DELIM.join(s["original"] for s in batch)
+            try:
+                translated_joined = translator.translate(joined)
+                parts = translated_joined.split(DELIM.strip())
+                if len(parts) != len(batch):
+                    # Delimiter got mangled by translation; fall back to
+                    # per-segment translation for just this batch.
+                    parts = []
+                    for s in batch:
+                        try:
+                            parts.append(translator.translate(s["original"]))
+                        except Exception:
+                            parts.append(s["original"])
+            except Exception:
+                parts = [s["original"] for s in batch]
+
+            for seg, translated in zip(batch, parts):
+                segments.append({
+                    "start": seg["start"],
+                    "end": seg["end"],
+                    "original": seg["original"],
+                    "translated": translated.strip(),
+                })
+
+        _set_job(
+            job_id,
+            status="done",
+            result={
+                "detected_language": info.language,
+                "target_language": target_lang,
+                "segments": segments,
+            },
+        )
+
+    except Exception as e:
+        _set_job(job_id, status="error", error=str(e))
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 @app.route("/")
@@ -48,6 +170,8 @@ def api_languages():
 
 @app.route("/api/process", methods=["POST"])
 def api_process():
+    _cleanup_old_jobs()
+
     if "video" not in request.files:
         return jsonify({"error": "No video file received."}), 400
 
@@ -58,45 +182,46 @@ def api_process():
         return jsonify({"error": "Empty filename."}), 400
 
     tmp_dir = tempfile.mkdtemp()
+    video_path = os.path.join(tmp_dir, video.filename)
+    video.save(video_path)
+
+    job_id = str(uuid.uuid4())
+    with JOBS_LOCK:
+        JOBS[job_id] = {"status": "queued", "created_at": time.time()}
+
+    thread = threading.Thread(
+        target=run_job,
+        args=(job_id, video_path, target_lang, tmp_dir),
+        daemon=True,
+    )
+    thread.start()
+
+    # Return immediately so Render's proxy never has to hold this request open.
+    return jsonify({"job_id": job_id}), 202
+
+
+@app.route("/api/status/<job_id>")
+def api_status(job_id):
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+
+    if job is None:
+        return jsonify({"error": "Unknown or expired job."}), 404
+
+    status = job.get("status")
     try:
-        video_path = os.path.join(tmp_dir, video.filename)
-        video.save(video_path)
+        stage_index = STAGE_ORDER.index(status)
+    except ValueError:
+        stage_index = 0
+    progress_pct = round((stage_index / (len(STAGE_ORDER) - 1)) * 100)
 
-        audio_path = os.path.join(tmp_dir, "audio.wav")
-        clip = mp.VideoFileClip(video_path)
-        clip.audio.write_audiofile(audio_path, logger=None)
-        clip.close()
+    response = {"status": status, "progress": progress_pct}
+    if status == "done":
+        response["result"] = job.get("result")
+    elif status == "error":
+        response["error"] = job.get("error")
 
-        model = get_model()
-        segments_gen, info = model.transcribe(audio_path, beam_size=5, vad_filter=True)
-
-        translator = GoogleTranslator(source="auto", target=target_lang)
-        segments = []
-        for seg in segments_gen:
-            original = seg.text.strip()
-            if not original:
-                continue
-            try:
-                translated = translator.translate(original)
-            except Exception:
-                translated = original
-            segments.append({
-                "start": round(seg.start, 2),
-                "end": round(seg.end, 2),
-                "original": original,
-                "translated": translated,
-            })
-
-        return jsonify({
-            "detected_language": info.language,
-            "target_language": target_lang,
-            "segments": segments,
-        })
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+    return jsonify(response)
 
 
 if __name__ == "__main__":
