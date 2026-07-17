@@ -31,6 +31,25 @@ def get_model():
     return _model
 
 
+def _preload_model():
+    """
+    Warm up the model as soon as the worker boots, in a background thread,
+    instead of on the first user request. Render's free tier wipes any
+    cached model files on every restart/redeploy, so this download/load
+    cost happens once per deploy no matter what — this just moves it out
+    of a user's first request and into server startup instead.
+    """
+    try:
+        get_model()
+    except Exception:
+        # If preloading fails for any reason, get_model() will just retry
+        # lazily on the first real request instead.
+        pass
+
+
+threading.Thread(target=_preload_model, daemon=True).start()
+
+
 LANGUAGES = {
     "Hindi": "hi", "English": "en", "Marathi": "mr", "Bengali": "bn",
     "Tamil": "ta", "Telugu": "te", "Gujarati": "gu", "Kannada": "kn",
@@ -49,7 +68,7 @@ JOBS_LOCK = threading.Lock()
 JOB_TTL_SECONDS = 60 * 60  # 1 hour
 
 # Ordered stages used to compute a progress percentage on the frontend
-STAGE_ORDER = ["queued", "extracting_audio", "transcribing", "translating", "done"]
+STAGE_ORDER = ["queued", "extracting_audio", "loading_model", "transcribing", "translating", "done"]
 
 
 def _cleanup_old_jobs():
@@ -75,6 +94,9 @@ def run_job(job_id, video_path, target_lang, tmp_dir):
         clip = mp.VideoFileClip(video_path)
         clip.audio.write_audiofile(audio_path, logger=None)
         clip.close()
+
+        if _model is None:
+            _set_job(job_id, status="loading_model")
 
         _set_job(job_id, status="transcribing")
 
