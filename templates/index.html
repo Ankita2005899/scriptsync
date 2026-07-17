@@ -278,7 +278,12 @@
     color: var(--red-dark);
     letter-spacing: 0.02em;
   }
-  .countdown-clock.at-zero { color: var(--text-muted); }
+  .countdown-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
 
   .limits-bar {
     display: none;
@@ -512,7 +517,8 @@
     <div class="limits-bar" id="limits-bar">
       <div>Max upload: <strong>500MB</strong> · Recommended length: <strong>under 15 min</strong> for reasonable free-tier speed</div>
       <div class="countdown-wrap">
-        <span class="countdown-clock" id="countdown-clock">--:--</span>
+        <span class="countdown-label">Elapsed:</span>
+        <span class="countdown-clock" id="countdown-clock">00:00</span>
         <span class="finish-state" id="finish-state">Not finished yet…</span>
       </div>
     </div>
@@ -646,24 +652,17 @@
     });
   }
 
-  function startCountdown(seconds) {
-    stopCountdown();
-    let remaining = seconds;
-    countdownClock.classList.remove('at-zero');
-    countdownClock.textContent = formatClock(remaining);
+  function startStopwatch() {
+    stopStopwatch();
+    const startedAt = Date.now();
+    countdownClock.textContent = formatClock(0);
     countdownTimer = setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        remaining = 0;
-        countdownClock.classList.add('at-zero');
-        clearInterval(countdownTimer);
-        countdownTimer = null;
-      }
-      countdownClock.textContent = formatClock(remaining);
+      const elapsed = (Date.now() - startedAt) / 1000;
+      countdownClock.textContent = formatClock(elapsed);
     }, 1000);
   }
 
-  function stopCountdown() {
+  function stopStopwatch() {
     if (countdownTimer) {
       clearInterval(countdownTimer);
       countdownTimer = null;
@@ -703,10 +702,10 @@
     const duration = await readVideoDuration(file);
     if (duration) {
       estimatedSeconds = estimateProcessingSeconds(duration);
-      timeEstimate.innerHTML = `Video length: <strong>${formatClock(duration)}</strong> · Estimated processing time: <strong>${formatClock(estimatedSeconds)}</strong> (free-tier CPU estimate)`;
+      timeEstimate.innerHTML = `Video length: <strong>${formatClock(duration)}</strong> · Rough guideline only: often around <strong>${formatClock(estimatedSeconds)}</strong>, but actual time varies a lot depending on server load — the clock below shows real elapsed time, not a prediction.`;
     } else {
       estimatedSeconds = 60;
-      timeEstimate.textContent = "Couldn't read video length — showing a default estimate once processing starts.";
+      timeEstimate.textContent = "Couldn't read video length. The clock below will show real elapsed time once processing starts.";
     }
   }
 
@@ -740,7 +739,7 @@
     finishState.classList.remove('is-done');
     setProgress(0);
     processingLabel.textContent = STAGE_LABELS.queued;
-    startCountdown(estimatedSeconds || 60);
+    startStopwatch();
 
     const formData = new FormData();
     formData.append('video', selectedFile);
@@ -753,7 +752,7 @@
       if (!res.ok) {
         showError(data.error || 'Something went wrong. Try a shorter clip.');
         processing.classList.remove('show');
-        stopCountdown();
+        stopStopwatch();
         submitBtn.disabled = false;
         return;
       }
@@ -762,7 +761,7 @@
     } catch (err) {
       showError('Could not reach the server. Check your connection and try again.');
       processing.classList.remove('show');
-      stopCountdown();
+      stopStopwatch();
       submitBtn.disabled = false;
     }
   });
@@ -775,7 +774,7 @@
       if (!res.ok) {
         showError(data.error || 'Lost track of this job. Please try again.');
         processing.classList.remove('show');
-        stopCountdown();
+        stopStopwatch();
         submitBtn.disabled = false;
         stopPolling();
         return;
@@ -786,7 +785,7 @@
 
       if (data.status === 'done') {
         stopPolling();
-        stopCountdown();
+        stopStopwatch();
         finishState.textContent = '✓ Finished';
         finishState.classList.add('is-done');
         renderResults(data.result);
@@ -797,7 +796,7 @@
 
       if (data.status === 'error') {
         stopPolling();
-        stopCountdown();
+        stopStopwatch();
         finishState.textContent = 'Stopped — see error below';
         finishState.classList.remove('is-done');
         showError(data.error || 'Something went wrong while processing your video.');
