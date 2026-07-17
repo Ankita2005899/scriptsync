@@ -234,6 +234,18 @@
   .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(214, 39, 60, 0.25); background: var(--red-dark); }
   .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  .warmup-notice {
+    display: none;
+    margin-top: 18px;
+    padding: 12px 16px;
+    border-left: 3px solid var(--red);
+    background: var(--surface-2);
+    font-size: 0.85rem;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .warmup-notice.show { display: block; }
+
   .error-box {
     display: none;
     margin-top: 18px;
@@ -479,6 +491,10 @@
       </div>
     </form>
 
+    <div class="warmup-notice" id="warmup-notice">
+      ⏳ Model is still warming up on the server (this happens after every restart). You can wait here — it usually finishes in under a minute — or submit anyway, but your first request may take longer than the estimate below.
+    </div>
+
     <div class="controls">
       <div class="field">
         <label for="language-select">Translate to</label>
@@ -553,6 +569,27 @@
   const finishState = document.getElementById('finish-state');
   const timeEstimate = document.getElementById('time-estimate');
   const countdownClock = document.getElementById('countdown-clock');
+  const warmupNotice = document.getElementById('warmup-notice');
+
+  // Check whether the model has finished loading on the server. If not,
+  // show a notice and keep checking every few seconds until it's ready —
+  // this is purely informational and doesn't block submitting.
+  async function checkModelReady() {
+    try {
+      const res = await fetch('/api/ready');
+      const data = await res.json();
+      if (data.model_ready) {
+        warmupNotice.classList.remove('show');
+      } else {
+        warmupNotice.classList.add('show');
+        setTimeout(checkModelReady, 4000);
+      }
+    } catch (err) {
+      // Silently retry; not critical if this check fails once.
+      setTimeout(checkModelReady, 6000);
+    }
+  }
+  checkModelReady();
   const results = document.getElementById('results');
   const captionBody = document.getElementById('caption-body');
   const langBadge = document.getElementById('lang-badge');

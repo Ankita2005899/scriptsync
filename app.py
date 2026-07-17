@@ -98,13 +98,9 @@ def run_job(job_id, video_path, target_lang, tmp_dir):
         if _model is None:
             _set_job(job_id, status="loading_model")
 
-        _set_job(job_id, status="transcribing")
-
         model = get_model()
-        # beam_size=1 is noticeably faster than 5 on CPU with only a small
-        # accuracy tradeoff. condition_on_previous_text=False avoids the
-        # model re-reading its own prior output as context, which also
-        # costs extra compute on CPU.
+
+        _set_job(job_id, status="transcribing")
         segments_gen, info = model.transcribe(
             audio_path,
             beam_size=1,
@@ -183,6 +179,11 @@ def run_job(job_id, video_path, target_lang, tmp_dir):
 @app.route("/")
 def index():
     return render_template("index.html", languages=LANGUAGES)
+
+
+@app.route("/api/ready")
+def api_ready():
+    return jsonify({"model_ready": _model is not None})
 
 
 @app.route("/api/languages")
