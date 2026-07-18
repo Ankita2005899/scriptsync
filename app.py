@@ -148,6 +148,21 @@ def pick_important_word(text):
     return max(candidates, key=len)
 
 
+def group_segments(segments, char_budget=450, max_per_group=6):
+    groups = []
+    current, current_len = [], 0
+    for seg in segments:
+        seg_len = len(seg.get("translated", ""))
+        if current and (current_len + seg_len > char_budget or len(current) >= max_per_group):
+            groups.append(current)
+            current, current_len = [], 0
+        current.append(seg)
+        current_len += seg_len
+    if current:
+        groups.append(current)
+    return groups
+
+
 def get_job_result_or_404(job_id):
     with JOBS_LOCK:
         job = JOBS.get(job_id)
@@ -344,24 +359,68 @@ def build_pdf(result):
         meta_style,
     ))
 
-    for seg in result.get("segments", []):
-        story.append(Paragraph(f"{seg['start']:.0f}s - {seg['end']:.0f}s", time_style))
+    from reportlab.platypus import Image as RLImage
 
-        translated = seg.get("translated", "")
-        important = pick_important_word(translated)
-        display_text = translated
-        if important:
-            display_text = re.sub(
-                rf"\b({re.escape(important)})\b",
-                r"<b>\1</b>",
-                translated,
-                count=1,
-            )
-        story.append(Paragraph(display_text, body_style))
+    for group in group_segments(result.get("segments", [])):
+        for seg in group:
+            story.append(Paragraph(f"{seg['start']:.0f}s - {seg['end']:.0f}s", time_style))
+
+            translated = seg.get("translated", "")
+            important = pick_important_word(translated)
+            display_text = translated
+            if important:
+                display_text = re.sub(
+                    rf"\b({re.escape(important)})\b",
+                    r"<b>\1</b>",
+                    translated,
+                    count=1,
+                )
+            story.append(Paragraph(display_text, body_style))
+
+        query = pick_search_query(" ".join(s.get("translated", "") for s in group))
+        img_url = search_image_url(query)
+        img_bytes = download_image_bytes(img_url)
+        if img_bytes:
+            try:
+                story.append(Spacer(1, 6))
+                story.append(RLImage(io.BytesIO(img_bytes), width=2.8 * inch, height=1.8 * inch))
+                story.append(Spacer(1, 10))
+            except Exception:
+                pass
 
     doc.build(story)
     buf.seek(0)
     return buf
+
+
+def _add_emphasized_run(paragraph, text, keyword, base_size, emphasis_size):
+    if not keyword:
+        run = paragraph.add_run()
+        run.text = text
+        run.font.size = PptxPt(base_size)
+        return
+
+    match = re.search(rf"\b{re.escape(keyword)}\b", text)
+    if not match:
+        run = paragraph.add_run()
+        run.text = text
+        run.font.size = PptxPt(base_size)
+        return
+
+    before, kw, after = text[:match.start()], match.group(0), text[match.end():]
+    if before:
+        r = paragraph.add_run()
+        r.text = before
+        r.font.size = PptxPt(base_size)
+    r_kw = paragraph.add_run()
+    r_kw.text = kw
+    r_kw.font.size = PptxPt(emphasis_size)
+    r_kw.font.bold = True
+    r_kw.font.color.rgb = PptxRGBColor(0xD6, 0x27, 0x3C)
+    if after:
+        r = paragraph.add_run()
+        r.text = after
+        r.font.size = PptxPt(base_size)
 
 
 def build_pptx(result, with_images=True):
@@ -377,44 +436,49 @@ def build_pptx(result, with_images=True):
         f"{result.get('target_language', '').upper()}"
     )
 
-    for seg in result.get("segments", []):
+    for group in group_segments(result.get("segments", []), char_budget=380, max_per_group=5):
         slide = prs.slides.add_slide(blank_layout)
 
-        text_width = PptxInches(5.5) if with_images else PptxInches(9)
+        text_width = PptxInches(5.7) if with_images else PptxInches(9)
         tb = slide.shapes.add_textbox(PptxInches(0.5), PptxInches(0.4), text_width, PptxInches(6.5))
         tf = tb.text_frame
         tf.word_wrap = True
 
-        time_p = tf.paragraphs[0]
-        time_run = time_p.add_run()
-        time_run.text = f"{seg['start']:.0f}s - {seg['end']:.0f}s"
-        time_run.font.size = PptxPt(14)
-        time_run.font.color.rgb = PptxRGBColor(0xD6, 0x27, 0x3C)
-        time_run.font.bold = True
+        first = True
+        for seg in group:
+            time_p = tf.paragraphs[0] if first else tf.add_paragraph()
+            time_run = time_p.add_run()
+            time_run.text = f"{seg['start']:.0f}s - {seg['end']:.0f}s"
+            time_run.font.size = PptxPt(11)
+            time_run.font.color.rgb = PptxRGBColor(0x99, 0x99, 0x99)
+            time_run.font.bold = True
 
-        trans_p = tf.add_paragraph()
-        trans_run = trans_p.add_run()
-        trans_run.text = seg.get("translated", "")
-        trans_run.font.size = PptxPt(20)
-        trans_run.font.bold = True
+            translated = seg.get("translated", "")
+            important = pick_important_word(translated)
+            trans_p = tf.add_paragraph()
+            _add_emphasized_run(trans_p, translated, important, base_size=15, emphasis_size=19)
 
-        orig_p = tf.add_paragraph()
-        orig_run = orig_p.add_run()
-        orig_run.text = seg.get("original", "")
-        orig_run.font.size = PptxPt(12)
-        orig_run.font.italic = True
-        orig_run.font.color.rgb = PptxRGBColor(0x80, 0x80, 0x80)
+            orig_p = tf.add_paragraph()
+            orig_run = orig_p.add_run()
+            orig_run.text = seg.get("original", "")
+            orig_run.font.size = PptxPt(10)
+            orig_run.font.italic = True
+            orig_run.font.color.rgb = PptxRGBColor(0x99, 0x99, 0x99)
+
+            spacer_p = tf.add_paragraph()
+            spacer_p.add_run().text = ""
+            first = False
 
         if with_images:
-            query = pick_search_query(seg.get("translated") or seg.get("original", ""))
+            query = pick_search_query(" ".join(s.get("translated", "") for s in group))
             img_url = search_image_url(query)
             img_bytes = download_image_bytes(img_url)
             if img_bytes:
                 try:
                     slide.shapes.add_picture(
                         io.BytesIO(img_bytes),
-                        PptxInches(6.3), PptxInches(1.2),
-                        width=PptxInches(3.0),
+                        PptxInches(6.5), PptxInches(1.5),
+                        width=PptxInches(2.8),
                     )
                 except Exception:
                     pass
@@ -423,6 +487,36 @@ def build_pptx(result, with_images=True):
     prs.save(buf)
     buf.seek(0)
     return buf
+
+
+def _add_emphasized_docx_run(paragraph, text, keyword, base_size, emphasis_size):
+    from docx.enum.text import WD_COLOR_INDEX
+
+    if not keyword:
+        r = paragraph.add_run(text)
+        r.font.size = Pt(base_size)
+        return
+
+    match = re.search(rf"\b{re.escape(keyword)}\b", text)
+    if not match:
+        r = paragraph.add_run(text)
+        r.font.size = Pt(base_size)
+        return
+
+    before, kw, after = text[:match.start()], match.group(0), text[match.end():]
+    if before:
+        r = paragraph.add_run(before)
+        r.font.size = Pt(base_size)
+    r_kw = paragraph.add_run(kw)
+    r_kw.font.size = Pt(emphasis_size)
+    r_kw.bold = True
+    try:
+        r_kw.font.highlight_color = WD_COLOR_INDEX.YELLOW
+    except Exception:
+        pass
+    if after:
+        r = paragraph.add_run(after)
+        r.font.size = Pt(base_size)
 
 
 def build_notes_docx(result):
@@ -435,29 +529,25 @@ def build_notes_docx(result):
         f"{result.get('target_language', '').upper()}"
     ).italic = True
 
-    for seg in result.get("segments", []):
-        time_p = doc.add_paragraph()
-        time_run = time_p.add_run(f"{seg['start']:.0f}s - {seg['end']:.0f}s")
-        time_run.font.size = Pt(10)
-        time_run.font.color.rgb = RGBColor(0xD6, 0x27, 0x3C)
-        time_run.bold = True
+    for group in group_segments(result.get("segments", []), char_budget=500, max_per_group=6):
+        for seg in group:
+            time_p = doc.add_paragraph()
+            time_run = time_p.add_run(f"{seg['start']:.0f}s - {seg['end']:.0f}s")
+            time_run.font.size = Pt(9)
+            time_run.font.color.rgb = RGBColor(0x99, 0x99, 0x99)
+            time_run.bold = True
 
-        note_p = doc.add_paragraph()
-        note_run = note_p.add_run(seg.get("translated", ""))
-        note_run.font.size = Pt(16)
-        note_run.bold = True
-        try:
-            from docx.enum.text import WD_COLOR_INDEX
-            note_run.font.highlight_color = WD_COLOR_INDEX.YELLOW
-        except Exception:
-            pass
+            translated = seg.get("translated", "")
+            important = pick_important_word(translated)
+            note_p = doc.add_paragraph()
+            _add_emphasized_docx_run(note_p, translated, important, base_size=12, emphasis_size=15)
 
-        query = pick_search_query(seg.get("translated") or seg.get("original", ""))
+        query = pick_search_query(" ".join(s.get("translated", "") for s in group))
         img_url = search_image_url(query)
         img_bytes = download_image_bytes(img_url)
         if img_bytes:
             try:
-                doc.add_picture(io.BytesIO(img_bytes), width=Inches(3.5))
+                doc.add_picture(io.BytesIO(img_bytes), width=Inches(2.8))
             except Exception:
                 pass
 
