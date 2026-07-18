@@ -29,8 +29,10 @@ from pptx.dml.color import RGBColor as PptxRGBColor
 
 try:
     from duckduckgo_search import DDGS
-except Exception:
+    print("[startup] duckduckgo_search imported successfully — image search enabled.")
+except Exception as e:
     DDGS = None  # image search becomes a no-op if the package fails to load
+    print(f"[startup] duckduckgo_search FAILED to import ({type(e).__name__}: {e}) — image search disabled.")
 
 app = Flask(__name__)
 
@@ -116,6 +118,7 @@ def search_image_url(query, timeout=6):
     """
     query = (query or "").strip()
     if not query or DDGS is None:
+        print(f"[image_search] SKIPPED — query empty or DDGS unavailable (DDGS={DDGS}), query='{query}'")
         return None
 
     with _IMAGE_CACHE_LOCK:
@@ -128,7 +131,11 @@ def search_image_url(query, timeout=6):
             results = list(ddgs.images(query, max_results=1, safesearch="moderate"))
             if results:
                 url = results[0].get("image")
-    except Exception:
+                print(f"[image_search] OK — query='{query}' -> {url}")
+            else:
+                print(f"[image_search] NO RESULTS — query='{query}'")
+    except Exception as e:
+        print(f"[image_search] EXCEPTION — query='{query}' -> {type(e).__name__}: {e}")
         url = None
 
     with _IMAGE_CACHE_LOCK:
@@ -143,12 +150,16 @@ def download_image_bytes(url, timeout=8, max_bytes=8 * 1024 * 1024):
     try:
         resp = requests.get(url, timeout=timeout, stream=True)
         if resp.status_code != 200:
+            print(f"[image_download] BAD STATUS {resp.status_code} for {url}")
             return None
         content = resp.content
         if not content or len(content) > max_bytes:
+            print(f"[image_download] BAD SIZE ({len(content) if content else 0} bytes) for {url}")
             return None
+        print(f"[image_download] OK — {len(content)} bytes from {url}")
         return content
-    except Exception:
+    except Exception as e:
+        print(f"[image_download] EXCEPTION for {url} -> {type(e).__name__}: {e}")
         return None
 
 
