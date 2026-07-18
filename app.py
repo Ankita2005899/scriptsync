@@ -29,30 +29,23 @@ from pptx.dml.color import RGBColor as PptxRGBColor
 
 try:
     from duckduckgo_search import DDGS
-except Exception:
-    DDGS = None  # image search becomes a no-op if the package fails to load
+    print("[startup] duckduckgo_search imported successfully - image search enabled.")
+except Exception as e:
+    DDGS = None
+    print(f"[startup] duckduckgo_search FAILED to import ({type(e).__name__}: {e}) - image search disabled.")
 
 app = Flask(__name__)
 
-# Note: this does NOT change Render free tier's 512MB RAM ceiling.
-# A very large video can still crash/hang the worker during transcription.
-app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500MB
+app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024
 
-# If set, /api/process forwards the video to a GPU-backed Colab server
-# instead of processing it locally on Render's slow free-tier CPU.
-# Set this in Render -> Environment -> COLAB_BACKEND_URL to the ngrok URL
-# printed by the Colab notebook's last cell (no trailing slash).
-# If unset, empty, or unreachable, this app falls back to local CPU
-# processing automatically -- nothing breaks if you don't have Colab running.
 COLAB_BACKEND_URL = os.environ.get("COLAB_BACKEND_URL", "").rstrip("/")
 
-MODEL_SIZE = os.environ.get("WHISPER_MODEL", "tiny")  # tiny/base = free-tier safe
+MODEL_SIZE = os.environ.get("WHISPER_MODEL", "tiny")
 _model = None
 _model_lock = threading.Lock()
 
 
 def get_model():
-    """Load the whisper model once, lazily (keeps cold-start fast)."""
     global _model
     if _model is None:
         with _model_lock:
@@ -62,18 +55,9 @@ def get_model():
 
 
 def _preload_model():
-    """
-    Warm up the model as soon as the worker boots, in a background thread,
-    instead of on the first user request. Render's free tier wipes any
-    cached model files on every restart/redeploy, so this download/load
-    cost happens once per deploy no matter what — this just moves it out
-    of a user's first request and into server startup instead.
-    """
     try:
         get_model()
     except Exception:
-        # If preloading fails for any reason, get_model() will just retry
-        # lazily on the first real request instead.
         pass
 
 
@@ -89,12 +73,9 @@ LANGUAGES = {
     "Korean": "ko", "Arabic": "ar",
 }
 
-# In-memory job store. Fine for a single free-tier worker;
-# jobs are lost on redeploy/restart, which is acceptable here.
 JOBS = {}
 JOBS_LOCK = threading.Lock()
 
-# Simple cache so we don't re-search the same query twice within one export
 _IMAGE_CACHE = {}
 _IMAGE_CACHE_LOCK = threading.Lock()
 
@@ -108,14 +89,9 @@ _STOPWORDS = {
 
 
 def search_image_url(query, timeout=6):
-    """
-    Looks up one relevant image URL for a short piece of text, using
-    DuckDuckGo's free (unofficial, no API key) image search. Returns None
-    on any failure -- callers should treat a missing image as fine, not
-    fatal, since this library can occasionally be rate-limited or break.
-    """
     query = (query or "").strip()
     if not query or DDGS is None:
+        print(f"[image_search] SKIPPED - query empty or DDGS unavailable (DDGS={DDGS}), query='{query}'")
         return None
 
     with _IMAGE_CACHE_LOCK:
@@ -128,7 +104,11 @@ def search_image_url(query, timeout=6):
             results = list(ddgs.images(query, max_results=1, safesearch="moderate"))
             if results:
                 url = results[0].get("image")
-    except Exception:
+                print(f"[image_search] OK - query='{query}' -> {url}")
+            else:
+                print(f"[image_search] NO RESULTS - query='{query}'")
+    except Exception as e:
+        print(f"[image_search] EXCEPTION - query='{query}' -> {type(e).__name__}: {e}")
         url = None
 
     with _IMAGE_CACHE_LOCK:
@@ -137,34 +117,30 @@ def search_image_url(query, timeout=6):
 
 
 def download_image_bytes(url, timeout=8, max_bytes=8 * 1024 * 1024):
-    """Downloads an image for embedding into a document. Returns None on failure."""
     if not url:
         return None
     try:
         resp = requests.get(url, timeout=timeout, stream=True)
         if resp.status_code != 200:
+            print(f"[image_download] BAD STATUS {resp.status_code} for {url}")
             return None
         content = resp.content
         if not content or len(content) > max_bytes:
+            print(f"[image_download] BAD SIZE ({len(content) if content else 0} bytes) for {url}")
             return None
+        print(f"[image_download] OK - {len(content)} bytes from {url}")
         return content
-    except Exception:
+    except Exception as e:
+        print(f"[image_download] EXCEPTION for {url} -> {type(e).__name__}: {e}")
         return None
 
 
 def pick_search_query(text, max_words=6):
-    """Picks a short, reasonable web-image search query out of a segment's text."""
     words = re.findall(r"[A-Za-z0-9']+", text)
     return " ".join(words[:max_words]) if words else ""
 
 
 def pick_important_word(text):
-    """
-    Heuristic 'main word' picker for bolding in the PDF export: the
-    longest non-stopword in the sentence, on the assumption that longer
-    content words tend to carry more meaning than short function words.
-    This is a simple heuristic, not real NLP keyword extraction.
-    """
     words = re.findall(r"[A-Za-z']+", text)
     candidates = [w for w in words if w.lower() not in _STOPWORDS and len(w) > 3]
     if not candidates:
@@ -179,10 +155,9 @@ def get_job_result_or_404(job_id):
         return None
     return job["result"]
 
-# Drop jobs older than this so memory doesn't grow forever (seconds)
-JOB_TTL_SECONDS = 60 * 60  # 1 hour
 
-# Ordered stages used to compute a progress percentage on the frontend
+JOB_TTL_SECONDS = 60 * 60
+
 STAGE_ORDER = ["queued", "extracting_audio", "loading_model", "transcribing", "translating", "done"]
 
 
@@ -201,33 +176,26 @@ def _set_job(job_id, **fields):
 
 
 def _try_colab_backend(job_id, video_path, target_lang):
-    """
-    Attempts to forward the video to the Colab GPU backend. Returns True if
-    it succeeded and the job was completed this way, False if it should
-    fall back to local CPU processing instead (Colab not configured, not
-    reachable, or it returned an error).
-    """
     if not COLAB_BACKEND_URL:
         return False
 
-    _set_job(job_id, status="transcribing")  # Colab is fast enough that finer stages aren't very useful
+    _set_job(job_id, status="transcribing")
     try:
         with open(video_path, "rb") as f:
             resp = requests.post(
                 f"{COLAB_BACKEND_URL}/api/process",
                 files={"video": (os.path.basename(video_path), f)},
                 data={"language": target_lang},
-                timeout=180,  # Colab GPU should be much faster than this
+                timeout=180,
             )
         if resp.status_code != 200:
-            # Colab reachable but returned an error -- fall back to local.
             return False
 
         data = resp.json()
         if "segments" not in data:
             return False
 
-        _set_job(job_id, status="translating")  # brief, mostly for UI continuity
+        _set_job(job_id, status="translating")
         _set_job(
             job_id,
             status="done",
@@ -240,18 +208,14 @@ def _try_colab_backend(job_id, video_path, target_lang):
         return True
 
     except (requests.exceptions.RequestException, ValueError):
-        # Colab notebook not running, tunnel expired, network hiccup, or
-        # bad JSON -- silently fall back to local processing below.
         return False
 
 
 def run_job(job_id, video_path, target_lang, tmp_dir):
-    """Runs in a background thread. Does the actual heavy lifting."""
     try:
         if _try_colab_backend(job_id, video_path, target_lang):
-            return  # Colab handled it successfully; nothing more to do.
+            return
 
-        # Fallback: process locally on Render's CPU, same as before.
         _set_job(job_id, status="extracting_audio")
 
         audio_path = os.path.join(tmp_dir, "audio.wav")
@@ -278,10 +242,6 @@ def run_job(job_id, video_path, target_lang, tmp_dir):
 
         _set_job(job_id, status="translating")
 
-        # Batch translation instead of one API call per segment.
-        # deep_translator's GoogleTranslator has a ~5000 char limit per call,
-        # so we join segments with a unique delimiter and split the result
-        # back apart, cutting dozens of network round-trips down to just a few.
         translator = GoogleTranslator(source="auto", target=target_lang)
         DELIM = "\n|||\n"
         BATCH_CHAR_LIMIT = 4000
@@ -305,8 +265,6 @@ def run_job(job_id, video_path, target_lang, tmp_dir):
                 translated_joined = translator.translate(joined)
                 parts = translated_joined.split(DELIM.strip())
                 if len(parts) != len(batch):
-                    # Delimiter got mangled by translation; fall back to
-                    # per-segment translation for just this batch.
                     parts = []
                     for s in batch:
                         try:
@@ -341,8 +299,6 @@ def run_job(job_id, video_path, target_lang, tmp_dir):
 
 
 def build_docx(result):
-    """Clean, professional Word document: heading per segment, translated
-    text as the main body, original as a smaller gray reference line."""
     doc = Document()
     title = doc.add_heading("ScriptSync Transcript", level=0)
 
@@ -353,7 +309,7 @@ def build_docx(result):
     ).italic = True
 
     for seg in result.get("segments", []):
-        heading = doc.add_heading(f"{seg['start']:.0f}s – {seg['end']:.0f}s", level=2)
+        heading = doc.add_heading(f"{seg['start']:.0f}s - {seg['end']:.0f}s", level=2)
 
         translated_p = doc.add_paragraph()
         run = translated_p.add_run(seg.get("translated", ""))
@@ -372,8 +328,6 @@ def build_docx(result):
 
 
 def build_pdf(result):
-    """PDF export with the main (heuristically important) word of each
-    segment bolded, as requested."""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=letter, topMargin=0.75 * inch, bottomMargin=0.75 * inch)
     styles = getSampleStyleSheet()
@@ -385,19 +339,18 @@ def build_pdf(result):
 
     story = [Paragraph("ScriptSync Transcript", title_style), Spacer(1, 6)]
     story.append(Paragraph(
-        f"Detected: {result.get('detected_language', 'unknown').upper()} &rarr; "
+        f"Detected: {result.get('detected_language', 'unknown').upper()} to "
         f"Translated to: {result.get('target_language', '').upper()}",
         meta_style,
     ))
 
     for seg in result.get("segments", []):
-        story.append(Paragraph(f"{seg['start']:.0f}s – {seg['end']:.0f}s", time_style))
+        story.append(Paragraph(f"{seg['start']:.0f}s - {seg['end']:.0f}s", time_style))
 
         translated = seg.get("translated", "")
         important = pick_important_word(translated)
         display_text = translated
         if important:
-            # Bold only the first occurrence of the chosen important word.
             display_text = re.sub(
                 rf"\b({re.escape(important)})\b",
                 r"<b>\1</b>",
@@ -412,8 +365,6 @@ def build_pdf(result):
 
 
 def build_pptx(result, with_images=True):
-    """One slide per segment: timestamp title, original + translated text,
-    and (if enabled) one auto-searched image per slide."""
     prs = Presentation()
     blank_layout = prs.slide_layouts[6]
 
@@ -429,7 +380,6 @@ def build_pptx(result, with_images=True):
     for seg in result.get("segments", []):
         slide = prs.slides.add_slide(blank_layout)
 
-        # Text box (left side if there's an image, full width otherwise)
         text_width = PptxInches(5.5) if with_images else PptxInches(9)
         tb = slide.shapes.add_textbox(PptxInches(0.5), PptxInches(0.4), text_width, PptxInches(6.5))
         tf = tb.text_frame
@@ -437,7 +387,7 @@ def build_pptx(result, with_images=True):
 
         time_p = tf.paragraphs[0]
         time_run = time_p.add_run()
-        time_run.text = f"{seg['start']:.0f}s – {seg['end']:.0f}s"
+        time_run.text = f"{seg['start']:.0f}s - {seg['end']:.0f}s"
         time_run.font.size = PptxPt(14)
         time_run.font.color.rgb = PptxRGBColor(0xD6, 0x27, 0x3C)
         time_run.font.bold = True
@@ -467,7 +417,7 @@ def build_pptx(result, with_images=True):
                         width=PptxInches(3.0),
                     )
                 except Exception:
-                    pass  # bad/corrupt image data -- just skip it for this slide
+                    pass
 
     buf = io.BytesIO()
     prs.save(buf)
@@ -476,13 +426,8 @@ def build_pptx(result, with_images=True):
 
 
 def build_notes_docx(result):
-    """
-    'Notes' format: each segment's full translated text shown large, bold,
-    and highlighted (like study notes), with one auto-searched image per
-    segment placed alongside it.
-    """
     doc = Document()
-    doc.add_heading("ScriptSync — Notes", level=0)
+    doc.add_heading("ScriptSync - Notes", level=0)
 
     meta = doc.add_paragraph()
     meta.add_run(
@@ -492,7 +437,7 @@ def build_notes_docx(result):
 
     for seg in result.get("segments", []):
         time_p = doc.add_paragraph()
-        time_run = time_p.add_run(f"{seg['start']:.0f}s – {seg['end']:.0f}s")
+        time_run = time_p.add_run(f"{seg['start']:.0f}s - {seg['end']:.0f}s")
         time_run.font.size = Pt(10)
         time_run.font.color.rgb = RGBColor(0xD6, 0x27, 0x3C)
         time_run.bold = True
@@ -501,8 +446,6 @@ def build_notes_docx(result):
         note_run = note_p.add_run(seg.get("translated", ""))
         note_run.font.size = Pt(16)
         note_run.bold = True
-        # python-docx has no direct "highlight" property via add_run in all
-        # versions uniformly, so we set it through the run's font element.
         try:
             from docx.enum.text import WD_COLOR_INDEX
             note_run.font.highlight_color = WD_COLOR_INDEX.YELLOW
@@ -518,7 +461,7 @@ def build_notes_docx(result):
             except Exception:
                 pass
 
-        doc.add_paragraph()  # spacing between notes
+        doc.add_paragraph()
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -569,7 +512,6 @@ def api_process():
     )
     thread.start()
 
-    # Return immediately so Render's proxy never has to hold this request open.
     return jsonify({"job_id": job_id}), 202
 
 
