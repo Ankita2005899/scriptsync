@@ -393,7 +393,23 @@
     padding: 5px 10px;
     border-radius: 6px;
   }
-  .downloads { display: flex; gap: 10px; }
+  .downloads-panel {
+    margin-top: 18px;
+    margin-bottom: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+  }
+  .downloads-group { min-width: 200px; }
+  .downloads-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .downloads-row { display: flex; flex-wrap: wrap; gap: 8px; }
   .btn-ghost {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.78rem;
@@ -552,15 +568,24 @@
   <section class="results" id="results">
     <div class="results-head">
       <h2>Your script</h2>
-      <div style="display:flex; align-items:center; gap:12px;">
-        <span class="lang-badge mono" id="lang-badge"></span>
-        <div class="downloads">
+      <span class="lang-badge mono" id="lang-badge"></span>
+    </div>
+
+    <div class="downloads-panel">
+      <div class="downloads-group">
+        <div class="downloads-label">Quick text</div>
+        <div class="downloads-row">
           <button class="btn-ghost" id="download-txt">↓ .txt</button>
           <button class="btn-ghost" id="download-srt">↓ .srt</button>
+        </div>
+      </div>
+      <div class="downloads-group">
+        <div class="downloads-label">Formatted documents</div>
+        <div class="downloads-row">
           <button class="btn-ghost" id="download-docx">↓ Word</button>
           <button class="btn-ghost" id="download-pdf">↓ PDF</button>
-          <button class="btn-ghost" id="download-pptx">↓ PPT</button>
-          <button class="btn-ghost" id="download-notes">↓ Notes</button>
+          <button class="btn-ghost" id="download-pptx">↓ PPT (with images)</button>
+          <button class="btn-ghost" id="download-notes">↓ Notes (with images)</button>
         </div>
       </div>
     </div>

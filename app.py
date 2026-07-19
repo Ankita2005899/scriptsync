@@ -164,19 +164,25 @@ def download_image_bytes(url, timeout=8, max_bytes=8 * 1024 * 1024):
 
 
 def pick_search_query(text, max_words=6):
-    """Picks a short, reasonable web-image search query out of a segment's text."""
-    words = re.findall(r"[A-Za-z0-9']+", text)
+    """Picks a short, reasonable web-image search query out of a segment's text.
+    Unicode-aware so this also works on non-English scripts (Hindi, etc.),
+    not just A-Z text -- otherwise translated text in another script
+    silently produces an empty query and image search never runs."""
+    words = re.findall(r"[^\s.,!?;:()\"'\u2018\u2019\u201c\u201d]+", text, flags=re.UNICODE)
     return " ".join(words[:max_words]) if words else ""
 
 
 def pick_important_word(text):
     """
-    Heuristic 'main word' picker for bolding in the PDF export: the
-    longest non-stopword in the sentence, on the assumption that longer
-    content words tend to carry more meaning than short function words.
-    This is a simple heuristic, not real NLP keyword extraction.
+    Heuristic 'main word' picker for bolding/highlighting: the longest
+    non-stopword in the sentence, on the assumption that longer content
+    words tend to carry more meaning than short function words. Uses a
+    Unicode-aware pattern so this also works on non-English scripts
+    (Hindi, etc.) -- an A-Z-only pattern would find nothing there and
+    silently skip highlighting. This is a simple length heuristic, not
+    real NLP keyword extraction.
     """
-    words = re.findall(r"[A-Za-z']+", text)
+    words = re.findall(r"[^\s.,!?;:()\"'\u2018\u2019\u201c\u201d]+", text, flags=re.UNICODE)
     candidates = [w for w in words if w.lower() not in _STOPWORDS and len(w) > 3]
     if not candidates:
         return None
@@ -209,13 +215,14 @@ def make_topic_title(group, max_words=6):
     Derives a short, bold heading-style title from a group of segments --
     e.g. 'Setting Up The Project' -- similar to a slide title in a
     professionally designed deck, instead of just showing a timestamp.
+    Unicode-aware so this works for translated text in any script.
     """
     text = " ".join(s.get("translated", "") for s in group)
-    words = re.findall(r"[A-Za-z0-9']+", text)
+    words = re.findall(r"[^\s.,!?;:()\"'\u2018\u2019\u201c\u201d]+", text, flags=re.UNICODE)
     if not words:
         return "Untitled Segment"
     title_words = words[:max_words]
-    return " ".join(w.capitalize() for w in title_words)
+    return " ".join(w.capitalize() if w.isascii() else w for w in title_words)
 
 
 def format_duration(total_seconds):
@@ -488,7 +495,7 @@ def build_pdf(result):
 
         # One image per group, not per segment, so pages don't fill up
         # with mostly-whitespace single-line entries.
-        query = pick_search_query(" ".join(s.get("translated", "") for s in group))
+        query = pick_search_query(" ".join(s.get("original", "") for s in group))
         img_url = search_image_url(query)
         img_bytes = download_image_bytes(img_url)
         if img_bytes:
@@ -640,7 +647,7 @@ def build_pptx(result, with_images=True):
         orig_run.font.color.rgb = PptxRGBColor(0x99, 0x99, 0x99)
 
         if with_images:
-            query = pick_search_query(" ".join(s.get("translated", "") for s in group))
+            query = pick_search_query(" ".join(s.get("original", "") for s in group))
             img_url = search_image_url(query)
             img_bytes = download_image_bytes(img_url)
             if img_bytes:
@@ -725,7 +732,7 @@ def build_notes_docx(result):
 
         # One image per group of segments, not one per single short
         # segment, so the page isn't mostly whitespace around tiny blocks.
-        query = pick_search_query(" ".join(s.get("translated", "") for s in group))
+        query = pick_search_query(" ".join(s.get("original", "") for s in group))
         img_url = search_image_url(query)
         img_bytes = download_image_bytes(img_url)
         if img_bytes:
