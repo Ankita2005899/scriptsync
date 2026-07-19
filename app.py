@@ -27,12 +27,7 @@ from pptx import Presentation
 from pptx.util import Inches as PptxInches, Pt as PptxPt
 from pptx.dml.color import RGBColor as PptxRGBColor
 
-try:
-    from duckduckgo_search import DDGS
-    print("[startup] duckduckgo_search imported successfully — image search enabled.")
-except Exception as e:
-    DDGS = None  # image search becomes a no-op if the package fails to load
-    print(f"[startup] duckduckgo_search FAILED to import ({type(e).__name__}: {e}) — image search disabled.")
+print("[startup] Using Wikimedia Commons API for image search (no external package needed).")
 
 app = Flask(__name__)
 
@@ -112,13 +107,17 @@ _STOPWORDS = {
 def search_image_url(query, timeout=6):
     """
     Looks up one relevant image URL for a short piece of text, using
-    DuckDuckGo's free (unofficial, no API key) image search. Returns None
-    on any failure -- callers should treat a missing image as fine, not
-    fatal, since this library can occasionally be rate-limited or break.
+    Wikimedia Commons' official search API (free, no API key, no
+    scraping). This replaces an earlier DuckDuckGo-based approach that
+    imported fine but returned nothing when actually queried from
+    Render's server -- a common problem with unofficial scraping
+    libraries getting blocked from datacenter/cloud IPs, even though
+    they work fine from a normal home connection. Returns None on any
+    failure -- callers should treat a missing image as fine, not fatal.
     """
     query = (query or "").strip()
-    if not query or DDGS is None:
-        print(f"[image_search] SKIPPED — query empty or DDGS unavailable (DDGS={DDGS}), query='{query}'")
+    if not query:
+        print(f"[image_search] SKIPPED — empty query")
         return None
 
     with _IMAGE_CACHE_LOCK:
@@ -127,13 +126,39 @@ def search_image_url(query, timeout=6):
 
     url = None
     try:
-        with DDGS() as ddgs:
-            results = list(ddgs.images(query, max_results=1, safesearch="moderate"))
-            if results:
-                url = results[0].get("image")
+        resp = requests.get(
+            "https://commons.wikimedia.org/w/api.php",
+            params={
+                "action": "query",
+                "generator": "search",
+                "gsrsearch": query,
+                "gsrlimit": 3,
+                "gsrnamespace": 6,  # File namespace only
+                "prop": "imageinfo",
+                "iiprop": "url|mime",
+                "iiurlwidth": 700,
+                "format": "json",
+            },
+            headers={"User-Agent": "ScriptSyncApp/1.0 (educational transcript tool)"},
+            timeout=timeout,
+        )
+        if resp.status_code != 200:
+            print(f"[image_search] BAD STATUS {resp.status_code} — query='{query}'")
+        else:
+            data = resp.json()
+            pages = data.get("query", {}).get("pages", {})
+            for page in pages.values():
+                info = page.get("imageinfo", [{}])[0]
+                mime = info.get("mime", "")
+                candidate = info.get("thumburl") or info.get("url")
+                # Skip non-photo file types Commons sometimes returns (svg diagrams, pdfs, etc.)
+                if candidate and mime.startswith("image/") and "svg" not in mime:
+                    url = candidate
+                    break
+            if url:
                 print(f"[image_search] OK — query='{query}' -> {url}")
             else:
-                print(f"[image_search] NO RESULTS — query='{query}'")
+                print(f"[image_search] NO USABLE RESULTS — query='{query}'")
     except Exception as e:
         print(f"[image_search] EXCEPTION — query='{query}' -> {type(e).__name__}: {e}")
         url = None
