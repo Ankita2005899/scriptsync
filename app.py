@@ -330,6 +330,95 @@ def _try_colab_backend(job_id, video_path, target_lang):
         return False
 
 
+def _normalize_lang(target):
+    """Accepts 'mr', 'Marathi', 'marathi', 'zh-CN'... and returns the language code."""
+    t = (target or "").strip()
+    for name, code in LANGUAGES.items():
+        if t.lower() == name.lower() or t.lower() == code.lower():
+            return code
+    return t
+
+
+def _translate_deep(text, tl):
+    out = GoogleTranslator(source="auto", target=tl).translate(text)
+    if not out or not out.strip():
+        raise ValueError("deep-translator returned empty text")
+    return out
+
+
+def _translate_gtx(text, tl):
+    """Direct call to Google's free web endpoint (no API key)."""
+    r = requests.get(
+        "https://translate.googleapis.com/translate_a/single",
+        params={"client": "gtx", "sl": "auto", "tl": tl, "dt": "t", "q": text},
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=15,
+    )
+    r.raise_for_status()
+    out = "".join(part[0] for part in r.json()[0] if part and part[0])
+    if not out.strip():
+        raise ValueError("google endpoint returned empty text")
+    return out
+
+
+def _translate_mymemory(text, tl, src):
+    r = requests.get(
+        "https://api.mymemory.translated.net/get",
+        params={"q": text[:490], "langpair": f"{src or 'en'}|{tl}"},
+        timeout=15,
+    )
+    r.raise_for_status()
+    out = r.json().get("responseData", {}).get("translatedText", "")
+    if not out.strip() or "MYMEMORY WARNING" in out.upper():
+        raise ValueError("mymemory returned no usable text")
+    return out
+
+
+def translate_one(text, tl, src):
+    """Tries three translators in turn. Returns (translated_text, error_or_None)."""
+    last_err = None
+    for name, fn in (
+        ("deep-translator", lambda: _translate_deep(text, tl)),
+        ("google-gtx", lambda: _translate_gtx(text, tl)),
+        ("mymemory", lambda: _translate_mymemory(text, tl, src)),
+    ):
+        try:
+            out = fn().strip()
+            # Same text back (when the language really differs) = translator did nothing.
+            if out == text.strip() and any(c.isalpha() for c in text):
+                last_err = f"{name} returned the text unchanged"
+                continue
+            return out, None
+        except Exception as e:
+            last_err = f"{name}: {e}"
+            print(f"[translate] {last_err}")
+    return text, last_err
+
+
+def translate_segments(raw_segments, target_lang, detected_lang):
+    """Translates each segment (4 at a time). Raises if NOTHING could be translated."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    tl = _normalize_lang(target_lang)
+    same = (detected_lang or "").split("-")[0].lower() == tl.split("-")[0].lower()
+    if same:  # video is already in the chosen language
+        return [dict(s, translated=s["original"]) for s in raw_segments]
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lambda s: translate_one(s["original"], tl, detected_lang), raw_segments))
+
+    failed = [err for _, err in results if err]
+    if raw_segments and len(failed) == len(raw_segments):
+        raise RuntimeError(f"Translation failed ({failed[0]}). Check your internet connection and try again.")
+    if failed:
+        print(f"[translate] {len(failed)}/{len(raw_segments)} segments could not be translated")
+
+    return [
+        {"start": s["start"], "end": s["end"], "original": s["original"], "translated": t}
+        for s, (t, _) in zip(raw_segments, results)
+    ]
+
+
 def run_job(job_id, video_path, target_lang, tmp_dir):
     """Runs in a background thread. Does the actual heavy lifting."""
     try:
@@ -362,52 +451,7 @@ def run_job(job_id, video_path, target_lang, tmp_dir):
         ]
 
         _set_job(job_id, status="translating")
-
-        # Batch translation instead of one API call per segment.
-        # deep_translator's GoogleTranslator has a ~5000 char limit per call,
-        # so we join segments with a unique delimiter and split the result
-        # back apart, cutting dozens of network round-trips down to just a few.
-        translator = GoogleTranslator(source="auto", target=target_lang)
-        DELIM = "\n|||\n"
-        BATCH_CHAR_LIMIT = 4000
-
-        batches = []
-        current_batch, current_len = [], 0
-        for seg in raw_segments:
-            seg_len = len(seg["original"]) + len(DELIM)
-            if current_batch and current_len + seg_len > BATCH_CHAR_LIMIT:
-                batches.append(current_batch)
-                current_batch, current_len = [], 0
-            current_batch.append(seg)
-            current_len += seg_len
-        if current_batch:
-            batches.append(current_batch)
-
-        segments = []
-        for batch in batches:
-            joined = DELIM.join(s["original"] for s in batch)
-            try:
-                translated_joined = translator.translate(joined)
-                parts = translated_joined.split(DELIM.strip())
-                if len(parts) != len(batch):
-                    # Delimiter got mangled by translation; fall back to
-                    # per-segment translation for just this batch.
-                    parts = []
-                    for s in batch:
-                        try:
-                            parts.append(translator.translate(s["original"]))
-                        except Exception:
-                            parts.append(s["original"])
-            except Exception:
-                parts = [s["original"] for s in batch]
-
-            for seg, translated in zip(batch, parts):
-                segments.append({
-                    "start": seg["start"],
-                    "end": seg["end"],
-                    "original": seg["original"],
-                    "translated": translated.strip(),
-                })
+        segments = translate_segments(raw_segments, target_lang, info.language)
 
         _set_job(
             job_id,
