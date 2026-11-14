@@ -377,21 +377,26 @@ def _translate_mymemory(text, tl, src):
 def translate_one(text, tl, src):
     """Tries three translators in turn. Returns (translated_text, error_or_None)."""
     last_err = None
+    worked_but_unchanged = False
+    # Whisper's language guess can be wrong (e.g. 'hi' for Latin-script text),
+    # so only pass it to MyMemory when the text really looks like that language.
+    mm_src = "en" if text.isascii() else (src or "en")
     for name, fn in (
         ("deep-translator", lambda: _translate_deep(text, tl)),
         ("google-gtx", lambda: _translate_gtx(text, tl)),
-        ("mymemory", lambda: _translate_mymemory(text, tl, src)),
+        ("mymemory", lambda: _translate_mymemory(text, tl, mm_src)),
     ):
         try:
             out = fn().strip()
-            # Same text back (when the language really differs) = translator did nothing.
             if out == text.strip() and any(c.isalpha() for c in text):
-                last_err = f"{name} returned the text unchanged"
+                worked_but_unchanged = True   # translator ran fine, text just came back the same
                 continue
             return out, None
         except Exception as e:
             last_err = f"{name}: {e}"
             print(f"[translate] {last_err}")
+    if worked_but_unchanged:
+        return text, None
     return text, last_err
 
 
@@ -400,10 +405,6 @@ def translate_segments(raw_segments, target_lang, detected_lang):
     from concurrent.futures import ThreadPoolExecutor
 
     tl = _normalize_lang(target_lang)
-    same = (detected_lang or "").split("-")[0].lower() == tl.split("-")[0].lower()
-    if same:  # video is already in the chosen language
-        return [dict(s, translated=s["original"]) for s in raw_segments]
-
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(lambda s: translate_one(s["original"], tl, detected_lang), raw_segments))
 
